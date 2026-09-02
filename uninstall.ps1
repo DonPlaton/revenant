@@ -17,6 +17,10 @@ $places = @(
   (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs')
 )
 foreach ($place in $places) {
+  # A redirected or roaming profile can leave one of these empty, and Join-Path
+  # throws on that, which under ErrorActionPreference Stop used to end the whole
+  # uninstall before it had removed anything at all.
+  if ([string]::IsNullOrEmpty($place)) { continue }
   $link = Join-Path $place "$appName.lnk"
   if (Test-Path $link) {
     Remove-Item $link -Force
@@ -34,12 +38,18 @@ if (Test-Path $uninstallKey) {
 
 $appDir = Join-Path $env:LOCALAPPDATA "Programs\$appName"
 
+# -Cli adds whichever folder the install came from, which is the clone when it was
+# run from one, so both candidates have to come back off.
+$ours = @($appDir)
+if ($PSScriptRoot) { $ours += $PSScriptRoot }
+
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($userPath) {
-  $kept = @($userPath -split ';' | Where-Object { $_ -and $_ -ne $appDir })
-  if ($kept.Count -ne @($userPath -split ';' | Where-Object { $_ }).Count) {
+  $entries = @($userPath -split ';' | Where-Object { $_ })
+  $kept = @($entries | Where-Object { $ours -notcontains $_.TrimEnd('\') -and $ours -notcontains $_ })
+  if ($kept.Count -ne $entries.Count) {
     [Environment]::SetEnvironmentVariable('Path', ($kept -join ';'), 'User')
-    Write-Host "removed $appDir from your user PATH"
+    Write-Host 'removed Revenant from your user PATH'
     $removed = $true
   }
 }

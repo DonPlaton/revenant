@@ -235,15 +235,17 @@ Measured on 34 transcripts totalling 534 MB, on an eight core desktop:
 
 | | |
 |---|---|
-| scan a seven day window | 40 ms, plus 12 ms to read the names of the rows it kept |
-| scan everything on disk | 52 ms, plus 20 ms |
+| scan a seven day window, named and ready to show | 20 ms |
+| scan everything on disk | 28 ms, or 21 ms once the names are known |
 | repeat request in the app | 0.2 ms, served from an eight second cache |
-| peak Python heap for a full scan | 1.5 MB |
+| peak Python heap for a full scan | 0.95 MB |
 | the app while you look at it | 0.3% of one core |
 
 Liveness used to cost half a second because it shelled out to `tasklist` and walked all 428
 processes on the machine. It now asks the kernel about the handful of process ids in the registry,
-which takes 0.2 ms.
+which takes 0.2 ms. Reading a transcript stops at the first record that answers the question, one
+pass over the end of a file collects both the last prompts and the session's name, and a name
+already read is not read again.
 
 The desktop window is a WebView2 or WebKit surface, so it holds around 430 MB while it is open,
 the same as any browser-backed app. It is meant to be opened, used for ten seconds and closed, and
@@ -312,7 +314,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-189 tests, no network, no real session touched. Everything runs against a synthetic config
+207 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
 terminal backends on all three platforms, quoting of paths with spaces and apostrophes, corrupt

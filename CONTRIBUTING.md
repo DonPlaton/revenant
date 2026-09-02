@@ -7,7 +7,7 @@ Small project, simple rules.
 ```bash
 git clone https://github.com/DonPlaton/revenant
 cd revenant
-python -m pytest tests -q     # 189 tests, no network, no real session touched
+python -m pytest tests -q     # 207 tests, no network, no real session touched
 python revenant.py --since 7d # the command line
 python revenant_gui.py        # the desktop app
 ```

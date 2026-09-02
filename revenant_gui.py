@@ -187,7 +187,8 @@ class Backend:
 
     def commands(self, ids: list[str], *, days: float, which: str = "") -> dict:
         chosen = self._by_id(ids, days=days, which=which)
-        return {"text": revenant.render_commands(chosen, shell="pwsh"), "count": len(chosen)}
+        shell = "pwsh" if os.name == "nt" else "bash"
+        return {"text": revenant.render_commands(chosen, shell=shell), "count": len(chosen)}
 
     def reveal(self, path: str) -> dict:
         """Open a session's folder in the file manager."""
@@ -225,6 +226,10 @@ class Backend:
         browser and exiting at once - so silence is the signal, not the lifetime of
         the process we spawned.
         """
+        # The clock starts now, not when the backend was built: a browser doing a
+        # cold start with a fresh profile can easily eat the whole grace period
+        # before it ever asks for the page.
+        self.touch()
         while not self._stop.wait(2.0):
             if time.monotonic() - self.last_seen > grace:
                 return
@@ -309,10 +314,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(403, b"forbidden", "text/plain; charset=utf-8")
             return
 
+        self.backend.touch()
         if parsed.path in {"/", "/index.html"}:
             self._serve_file(UI_DIR / "index.html")
             return
-        self.backend.touch()
         if parsed.path == "/api/sessions":
             days = _as_float(query.get("days", ["7"])[0], 7.0)
             which = (query.get("agent") or [""])[0][:40]
