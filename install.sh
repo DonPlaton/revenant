@@ -204,8 +204,14 @@ fi
 
 if [ "$CLI" = 1 ]; then
   mkdir -p "$HOME/.local/bin"
-  ln -sf "$HERE/revenant.py" "$HOME/.local/bin/revenant"
-  chmod +x "$HERE/revenant.py"
+  # A symlink would run revenant.py under its `#!/usr/bin/env python3` shebang,
+  # which on an older macOS is the 3.9 this installer just spent fifteen lines
+  # avoiding. The wrapper names the interpreter that was actually checked.
+  cat > "$HOME/.local/bin/revenant" <<WRAPPER
+#!/bin/sh
+exec "$PYTHON" "$HERE/revenant.py" "\$@"
+WRAPPER
+  chmod +x "$HOME/.local/bin/revenant"
   echo "  command -> $HOME/.local/bin/revenant"
   case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;

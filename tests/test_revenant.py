@@ -364,7 +364,7 @@ def test_launch_refuses_running_sessions(
     sessions = revenant.scan_sessions(with_live, since=revenant.parse_when("7d"), agent=live_agent)
     live = revenant.filter_sessions(sessions, only_live=True)
     assert revenant.launch(live, dry_run=False) == 2
-    assert "Refusing to launch" in capsys.readouterr().out
+    assert "Holding back" in capsys.readouterr().out
 
 
 def test_launch_without_directories_is_a_noop(capsys: pytest.CaptureFixture[str]) -> None:
@@ -449,7 +449,7 @@ def test_render_commands_cmd_and_bash(root: Path) -> None:
 def test_render_launcher_makes_one_wt_call(root: Path) -> None:
     sessions = revenant.filter_sessions(revenant.scan_sessions(root, since=revenant.parse_when("7d")))
     script = revenant.render_launcher(sessions, shell="pwsh")
-    assert script.count("wt.exe -w new") == 1, "all sessions must land as tabs in one window"
+    assert script.count("wt.exe -w 'new'") == 1, "all sessions must land as tabs in one window"
     assert script.count("new-tab") == len(sessions)
     assert script.count("`;") == len(sessions) - 1
     assert "Start-Process" in script, "must degrade gracefully when wt.exe is unavailable"

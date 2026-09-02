@@ -15,7 +15,6 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 #: How long a spawned terminal gets to fail before it counts as opened. Long
@@ -42,9 +41,28 @@ class Plan:
     terminal: str
     commands: list[list[str]] = field(default_factory=list)
     note: str = ""
+    #: Directory to start each command in, positionally. Empty means "wherever".
+    cwds: list[str] = field(default_factory=list)
+    #: Whether each command needs a console window of its own (Windows only).
+    new_console: bool = False
+    #: Commands whose failure is expected and must not count against the run.
+    optional: frozenset[int] = frozenset()
+    #: Commands that set the stage rather than open a window, so counting them
+    #: would report more terminals than the user can see.
+    overhead: frozenset[int] = frozenset()
+
+    def directory(self, index: int) -> str:
+        return self.cwds[index] if index < len(self.cwds) else ""
 
     def render(self) -> str:
-        return "\n".join(shlex.join(argv) for argv in self.commands)
+        lines = []
+        for index, argv in enumerate(self.commands):
+            line = shlex.join(argv)
+            if index in self.optional:
+                line += " || true"
+            cwd = self.directory(index)
+            lines.append(f"cd {shlex.quote(cwd)} && {line}" if cwd else line)
+        return "\n".join(lines)
 
 
 def _posix_payload(job: Job) -> str:
@@ -125,13 +143,20 @@ class WindowsConsole(Terminal):
     platforms = ("nt",)
 
     def plan(self, jobs: list[Job], **_) -> Plan:
+        """Spawn the shell directly, each in a console of its own.
+
+        Going through `cmd /c start` sent the directory as one token of a command
+        line that cmd re-parses, so a path holding `&`, `|` or `^` was cut in half
+        and the window opened somewhere else entirely. Windows takes a working
+        directory and a new-console flag at spawn time, where no punctuation in a
+        path can reach them.
+        """
         shell = _powershell()
         return Plan(
             self.key,
-            [
-                ["cmd", "/c", "start", "", "/D", job.cwd, shell, "-NoExit", "-Command", job.command]
-                for job in jobs
-            ],
+            [[shell, "-NoExit", "-Command", job.command] for job in jobs],
+            cwds=[job.cwd for job in jobs],
+            new_console=True,
         )
 
 
@@ -362,25 +387,46 @@ class Tmux(Terminal):
     def available(self) -> bool:
         return bool(shutil.which("tmux"))
 
-    def plan(self, jobs: list[Job], *, session: str = "", **_) -> Plan:
+    #: Named so it can be killed again, and so an existing session has nothing
+    #: matching it. Only ever created by the ensure step below.
+    BOOT_WINDOW = "revenant-boot"
+
+    def plan(self, jobs: list[Job], *, session: str = "revenant", **_) -> Plan:
+        """Make sure the session exists, then add one window per job.
+
+        Creating the session with the first job in it looked tidier, but
+        `new-session` fails outright when the name is taken, and that failure cost
+        exactly one session. `-A` makes the first step a no-op when the session is
+        already there, which also means an emitted script can be run twice.
+        """
         inside = bool(os.environ.get("TMUX"))
-        # `new-session` fails outright on a duplicate name, and that failure would
-        # cost exactly one session, so each revive gets a name of its own.
-        session = session or f"revenant-{datetime.now():%H%M%S}"
         commands: list[list[str]] = []
-        for index, job in enumerate(jobs):
-            payload = _posix_payload(job)
-            if index == 0 and not inside:
-                commands.append(
-                    ["tmux", "new-session", "-d", "-s", session, "-n", job.label, "-c", job.cwd, payload]
-                )
-            else:
-                target = ["-t", session] if not inside else []
-                commands.append(
-                    ["tmux", "new-window", *target, "-n", job.label, "-c", job.cwd, payload]
-                )
+        optional: set[int] = set()
+        overhead: set[int] = set()
+
+        if not inside:
+            commands.append(
+                ["tmux", "new-session", "-A", "-d", "-s", session, "-n", self.BOOT_WINDOW]
+            )
+            overhead.add(0)
+
+        target = [] if inside else ["-t", session]
+        for job in jobs:
+            commands.append(
+                ["tmux", "new-window", *target, "-n", job.label, "-c", job.cwd, _posix_payload(job)]
+            )
+
+        if not inside:
+            # Present only when this run created the session, so its absence is the
+            # normal case and must not read as a failure.
+            commands.append(["tmux", "kill-window", "-t", f"{session}:{self.BOOT_WINDOW}"])
+            optional.add(len(commands) - 1)
+            overhead.add(len(commands) - 1)
+
         note = "" if inside else f"Attach with: tmux attach -t {session}"
-        return Plan(self.key, commands, note)
+        return Plan(
+            self.key, commands, note, optional=frozenset(optional), overhead=frozenset(overhead)
+        )
 
 
 #: Detection order per platform. The first available backend wins.
@@ -460,17 +506,25 @@ def run(plan: Plan) -> tuple[int, str]:
     Windows Terminal fails on a bad profile or an unreadable directory, so the
     started processes get a moment to fall over before any of them is counted.
     """
+    # Each console gets its own window instead of fighting over the parent's.
+    creation = 0x00000010 if (plan.new_console and WINDOWS) else 0
+
     opened, failures = 0, []
     started: list[subprocess.Popen] = []
-    for argv in plan.commands:
+    for index, argv in enumerate(plan.commands):
+        cwd = plan.directory(index) or None
         try:
             if plan.terminal == "tmux":
                 subprocess.run(argv, check=True, capture_output=True, timeout=30)
-                opened += 1
+                if index not in plan.overhead:
+                    opened += 1
             else:
-                started.append(subprocess.Popen(argv, close_fds=True))
+                started.append(
+                    subprocess.Popen(argv, cwd=cwd, close_fds=True, creationflags=creation)
+                )
         except (OSError, subprocess.SubprocessError) as exc:
-            failures.append(str(exc))
+            if index not in plan.optional:
+                failures.append(str(exc))
 
     deadline = time.monotonic() + EARLY_EXIT_GRACE
     for process in started:

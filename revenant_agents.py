@@ -29,6 +29,49 @@ TAIL_BYTES = 256 * 1024
 #: `/rename` beats a title the model generated, which beats the agent's own name.
 TITLE_RECORDS = (("custom-title", "customTitle"), ("ai-title", "aiTitle"), ("agent-name", "agentName"))
 
+_TITLE_TYPES = frozenset(kind for kind, _ in TITLE_RECORDS)
+# Where a session's name is looked for first. Every named transcript on a real
+# machine kept its name within the last few pages; the full tail is the fallback.
+TITLE_BYTES = 64 * 1024
+
+#: Session name by (path, mtime, size), so a rescan of an unchanged transcript
+#: costs nothing. Cleared wholesale rather than evicted one by one: it is a cache
+#: for one listing, not a store.
+_TITLE_CACHE: dict[tuple[str, int, int], str] = {}
+_TITLE_CACHE_MAX = 4096
+
+
+def _stamp(path: Path) -> tuple[str, int, int] | None:
+    """A key that changes whenever the file does."""
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return (str(path), info.st_mtime_ns, info.st_size)
+
+
+def _remember_title(key: tuple[str, int, int] | None, title: str) -> str:
+    if key is not None:
+        if len(_TITLE_CACHE) >= _TITLE_CACHE_MAX:
+            _TITLE_CACHE.clear()
+        _TITLE_CACHE[key] = title
+    return title
+
+
+def _collect_title(record: dict, into: dict[str, str]) -> None:
+    for _, field in TITLE_RECORDS:
+        value = record.get(field)
+        if isinstance(value, str) and value.strip():
+            into[field] = value.strip()
+
+
+def _best_title(names: dict[str, str]) -> str:
+    for _, field in TITLE_RECORDS:
+        if field in names:
+            return clean_prompt(names[field], limit=80)
+    return ""
+
+
 # Harness plumbing that lands in the transcript looking like something the user typed.
 _META_PROMPT = re.compile(
     r"^\s*<(local-command-caveat|local-command-stdout|command-name|command-message"
@@ -185,9 +228,12 @@ class Agent:
         """The config directory this transcript was found under.
 
         Derived from the glob's depth so that it stays right for `--root` and for
-        any agent added later.
+        any agent added later. A path too short to hold that depth is not one of
+        ours, so the best answer available is where it sits.
         """
-        return transcript.parents[self.transcript_glob.count("/")]
+        parents = transcript.parents
+        depth = self.transcript_glob.count("/")
+        return parents[depth] if depth < len(parents) else transcript.parent
 
     def group(self, transcript: Path) -> str:
         """A short label for where the transcript is filed, used as a fallback name."""
@@ -236,10 +282,15 @@ class ClaudeCode(Agent):
     liveness_note = "running sessions register themselves, so this is exact"
 
     def head(self, transcript: Path) -> dict:
+        """Working directory, version, branch and start time from the first records.
+
+        Claude Code writes all four onto its first real record, so this normally
+        stops after two or three. The wider budget is only for a transcript that
+        opens with a run of harness records, and outside a repository there is no
+        branch to find, so that case reads to the limit as it always did.
+        """
         meta: dict = {}
         for index, record in enumerate(_records(transcript, limit=HEAD_LINES * 8)):
-            if index >= HEAD_LINES and "cwd" in meta:
-                break
             for key in ("cwd", "version", "gitBranch"):
                 if key not in meta and record.get(key):
                     meta[key] = record[key]
@@ -247,9 +298,16 @@ class ClaudeCode(Agent):
                 started = from_iso(record.get("timestamp"))
                 if started:
                     meta["started"] = started
+            if "cwd" in meta and "started" in meta and (len(meta) == 4 or index >= HEAD_LINES):
+                break
         return meta
 
     def tail(self, transcript: Path) -> tuple[str, str, int, bool]:
+        """The prompts, and the session's name as a side effect.
+
+        One pass over one window answers both questions, so `title()` below finds
+        the answer waiting for it instead of reading the same bytes again.
+        """
         complete = True
         try:
             complete = transcript.stat().st_size <= TAIL_BYTES
@@ -257,8 +315,13 @@ class ClaudeCode(Agent):
             return "", "", 0, False
 
         prompts: list[str] = []
+        names: dict[str, str] = {}
         for record in _tail_records(transcript, window=TAIL_BYTES):
-            if record.get("type") != "user" or record.get("isMeta") or record.get("isSidechain"):
+            kind = record.get("type")
+            if kind in _TITLE_TYPES:
+                _collect_title(record, names)
+                continue
+            if kind != "user" or record.get("isMeta") or record.get("isSidechain"):
                 continue
             content = (record.get("message") or {}).get("content")
             if isinstance(content, list):
@@ -266,6 +329,8 @@ class ClaudeCode(Agent):
             text = clean_prompt(content)
             if is_meaningful(text):
                 prompts.append(text)
+
+        _remember_title(_stamp(transcript), _best_title(names))
         if not prompts:
             return "", "", 0, complete
         return (prompts[0] if complete else ""), prompts[-1], len(prompts), complete
@@ -274,26 +339,32 @@ class ClaudeCode(Agent):
         """The name shown in Claude Code's own session picker.
 
         Naming records are rewritten on almost every turn, so the last one in the
-        file is current. Candidate lines are picked out with a substring test first,
-        because parsing every record in the window would cost more than the scan.
+        file is current and the end of the file is the cheap place to look. The
+        first pass reads a few pages, which is where every named session on a real
+        machine turned out to keep its name; the full window is the fallback.
         """
+        key = _stamp(transcript)
+        if key is not None and key in _TITLE_CACHE:
+            return _TITLE_CACHE[key]
+
+        found = self._scan_title(transcript, TITLE_BYTES)
+        if not found and key is not None and key[2] > TITLE_BYTES:
+            found = self._scan_title(transcript, TAIL_BYTES)
+        return _remember_title(key, found)
+
+    def _scan_title(self, transcript: Path, window: int) -> str:
         kinds = [kind.encode() for kind, _ in TITLE_RECORDS]
-        newest: dict[str, str] = {}
-        for raw in _tail_lines(transcript, window=TAIL_BYTES):
+        names: dict[str, str] = {}
+        for raw in _tail_lines(transcript, window=window):
+            # Parsing every record here would cost more than the whole scan does.
             if not any(kind in raw for kind in kinds):
                 continue
             try:
                 record = json.loads(raw)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
-            for _, field in TITLE_RECORDS:
-                value = record.get(field)
-                if isinstance(value, str) and value.strip():
-                    newest[field] = value.strip()
-        for _, field in TITLE_RECORDS:
-            if field in newest:
-                return clean_prompt(newest[field], limit=80)
-        return ""
+            _collect_title(record, names)
+        return _best_title(names)
 
     def history(self, root: Path) -> dict[str, list[tuple[datetime, str, str]]]:
         index: dict[str, list[tuple[datetime, str, str]]] = defaultdict(list)

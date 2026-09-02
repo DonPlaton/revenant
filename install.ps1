@@ -41,6 +41,28 @@ $markerName = '.revenant-managed'
 
 function Write-Step([string]$text) { Write-Host "  $text" -ForegroundColor DarkGray }
 
+function Invoke-Tolerantly {
+  <#
+    Run a program and hand back its exit code instead of throwing.
+
+    PowerShell 7.4 turned a non-zero exit from a native command into an error
+    record, which under ErrorActionPreference Stop is fatal. Every caller here has
+    something better to do than die: losing pywebview costs a window frame, not
+    the install.
+  #>
+  param([scriptblock]$Command)
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    & $Command
+    return $LASTEXITCODE
+  } catch {
+    return 1
+  } finally {
+    $ErrorActionPreference = $previous
+  }
+}
+
 # --------------------------------------------------------------------------- #
 # python
 # --------------------------------------------------------------------------- #
@@ -99,8 +121,10 @@ if (-not $python -and $InstallPython) {
     throw 'winget is not available, so Python cannot be installed automatically. Get it from https://python.org/downloads'
   }
   Write-Host 'Installing Python 3.13 with winget...' -ForegroundColor DarkGray
-  & winget install --exact --id Python.Python.3.13 --source winget `
-    --accept-package-agreements --accept-source-agreements
+  Invoke-Tolerantly {
+    winget install --exact --id Python.Python.3.13 --source winget `
+      --accept-package-agreements --accept-source-agreements
+  } | Out-Null
   # winget puts it on PATH for new processes, not this one.
   $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
               [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -176,8 +200,8 @@ if (-not (Test-Path $target)) { throw "revenant_gui.py is missing from $here" }
 
 if ($NativeWindow) {
   Write-Host 'Installing pywebview for a native window...' -ForegroundColor DarkGray
-  & $python -m pip install --quiet --upgrade pywebview
-  if ($LASTEXITCODE -ne 0) {
+  $code = Invoke-Tolerantly { & $python -m pip install --quiet --upgrade pywebview }
+  if ($code -ne 0) {
     Write-Host '  pywebview would not install; the app will open in a browser window instead.' -ForegroundColor Yellow
   }
 }
@@ -226,11 +250,15 @@ $entries = @{
   InstallLocation = $here
   URLInfoAbout    = "https://github.com/$repo"
   UninstallString = ('powershell -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $here 'uninstall.ps1'))
-  NoModify        = 1
-  NoRepair        = 1
 }
 foreach ($name in $entries.Keys) {
-  New-ItemProperty -Path $uninstallKey -Name $name -Value $entries[$name] -Force | Out-Null
+  New-ItemProperty -Path $uninstallKey -Name $name -Value $entries[$name] `
+    -PropertyType String -Force | Out-Null
+}
+# Windows reads these two as numbers; written as strings they mean nothing and the
+# entry still offers a Modify button with nothing behind it.
+foreach ($flag in @('NoModify', 'NoRepair')) {
+  New-ItemProperty -Path $uninstallKey -Name $flag -Value 1 -PropertyType DWord -Force | Out-Null
 }
 Write-Step 'listed in Settings > Apps'
 

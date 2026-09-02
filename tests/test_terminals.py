@@ -70,13 +70,24 @@ def test_windows_terminal_honours_window_and_profile() -> None:
     assert argv.count("-p") == 2
 
 
-def test_windows_console_sets_the_directory_without_cd() -> None:
+def test_windows_console_asks_the_kernel_for_the_directory() -> None:
+    """cmd re-parses its own command line, so a path with & or | was cut in half."""
     plan = terminals.WindowsConsole().plan(WINDOWS_JOBS)
     assert len(plan.commands) == 2
     argv = plan.commands[0]
-    assert argv[:5] == ["cmd", "/c", "start", "", "/D"]
-    assert argv[5] == r"D:\Coding\alpha"
+    assert "cmd" not in argv and "start" not in argv
     assert "-NoExit" in argv
+    assert plan.new_console is True
+    assert plan.directory(0) == r"D:\Coding\alpha"
+
+
+def test_a_directory_full_of_shell_punctuation_survives() -> None:
+    """Every character here is legal in a Windows path and special to cmd."""
+    hostile = r"D:\work\R&D (v2)^1 %TEMP% ;x"
+    plan = terminals.WindowsConsole().plan([terminals.Job("rnd", hostile, "claude --resume abc")])
+    # It travels as a spawn argument, not as text that something reads again.
+    assert plan.directory(0) == hostile
+    assert not any("R&D" in part for part in plan.commands[0])
 
 
 def test_iterm2_opens_one_window_with_tabs() -> None:
@@ -163,13 +174,36 @@ def test_xterm_titles_each_window() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_tmux_creates_a_session_then_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tmux_makes_sure_the_session_exists_then_adds_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("TMUX", raising=False)
     plan = terminals.Tmux().plan(JOBS)
-    assert plan.commands[0][:4] == ["tmux", "new-session", "-d", "-s"]
-    assert plan.commands[1][1] == "new-window"
+    assert plan.commands[0][:5] == ["tmux", "new-session", "-A", "-d", "-s"]
+    assert [argv[1] for argv in plan.commands[1:3]] == ["new-window", "new-window"]
     assert "-t" in plan.commands[1]
     assert "tmux attach -t revenant" in plan.note
+
+
+def test_tmux_can_be_run_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An emitted script is meant to be rerun, and a bare `new-session` fails on a
+    name already taken, which used to cost exactly one session."""
+    monkeypatch.delenv("TMUX", raising=False)
+    first, second = terminals.Tmux().plan(JOBS), terminals.Tmux().plan(JOBS)
+    assert first.commands == second.commands, "the same plan every time"
+    assert "-A" in first.commands[0], "create it only if it is not already there"
+
+
+def test_tmux_clears_up_the_window_it_had_to_create(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TMUX", raising=False)
+    plan = terminals.Tmux().plan(JOBS)
+    last = len(plan.commands) - 1
+    assert plan.commands[last][1] == "kill-window"
+    # It is absent when the session already existed, so it may fail, and it is not
+    # a window anyone asked for, so it must not be counted as one.
+    assert last in plan.optional and last in plan.overhead
+    assert 0 in plan.overhead and 0 not in plan.optional
+    assert "|| true" in plan.render()
 
 
 def test_tmux_inside_tmux_adds_windows_to_the_current_session(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,10 +214,11 @@ def test_tmux_inside_tmux_adds_windows_to_the_current_session(monkeypatch: pytes
     assert plan.note == ""
 
 
-def test_tmux_names_windows_after_the_session() -> None:
+def test_tmux_names_windows_after_the_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TMUX", raising=False)
     plan = terminals.Tmux().plan(JOBS)
-    assert "payments-api" in plan.commands[0]
-    assert "ml-pipeline" in plan.commands[1]
+    assert "payments-api" in plan.commands[1]
+    assert "ml-pipeline" in plan.commands[2]
 
 
 # --------------------------------------------------------------------------- #
@@ -333,12 +368,13 @@ def test_a_pinned_terminal_is_not_second_guessed(
     assert not called, "the user asked for this terminal, so do not silently switch"
 
 
-def test_tmux_session_names_do_not_collide_between_revives() -> None:
-    """`new-session` fails on a duplicate name, and that costs exactly one session."""
-    first = terminals.Tmux().plan(JOBS).commands[0]
-    assert first[:3] == ["tmux", "new-session", "-d"]
-    name = first[first.index("-s") + 1]
-    assert name.startswith("revenant-") and name != "revenant"
+def test_only_the_windows_someone_asked_for_are_counted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Setup and teardown steps are not terminals anyone can see."""
+    monkeypatch.delenv("TMUX", raising=False)
+    plan = terminals.Tmux().plan(JOBS)
+    monkeypatch.setattr(terminals.subprocess, "run", lambda *a, **k: None)
+    opened, _ = terminals.run(plan)
+    assert opened == len(JOBS)
 
 
 def test_a_terminal_that_quits_immediately_is_not_counted_as_opened() -> None:
