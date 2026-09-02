@@ -25,6 +25,13 @@ foreach ($place in $places) {
   }
 }
 
+$uninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$appName"
+if (Test-Path $uninstallKey) {
+  Remove-Item $uninstallKey -Recurse -Force
+  Write-Host 'removed the Settings > Apps entry'
+  $removed = $true
+}
+
 $appDir = Join-Path $env:LOCALAPPDATA "Programs\$appName"
 
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')

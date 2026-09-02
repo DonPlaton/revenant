@@ -206,6 +206,34 @@ foreach ($place in $places) {
   Write-Step "shortcut -> $linkPath"
 }
 
+# --------------------------------------------------------------------------- #
+# Settings > Apps, so it can be removed the way anything else is
+# --------------------------------------------------------------------------- #
+
+$version = '0.0.0'
+$versionLine = Select-String -Path (Join-Path $here 'revenant.py') -Pattern '^__version__ = "(.+)"' |
+  Select-Object -First 1
+if ($versionLine) { $version = $versionLine.Matches[0].Groups[1].Value }
+
+# HKCU, so this needs no administrator and belongs to this user alone.
+$uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Revenant'
+New-Item -Path $uninstallKey -Force | Out-Null
+$entries = @{
+  DisplayName     = 'Revenant'
+  DisplayVersion  = $version
+  Publisher       = 'DonPlaton'
+  DisplayIcon     = $icon
+  InstallLocation = $here
+  URLInfoAbout    = "https://github.com/$repo"
+  UninstallString = ('powershell -NoProfile -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $here 'uninstall.ps1'))
+  NoModify        = 1
+  NoRepair        = 1
+}
+foreach ($name in $entries.Keys) {
+  New-ItemProperty -Path $uninstallKey -Name $name -Value $entries[$name] -Force | Out-Null
+}
+Write-Step 'listed in Settings > Apps'
+
 if ($Cli) {
   # Never `setx PATH "$env:PATH;..."` - that copies the machine PATH into the user
   # scope and silently truncates at 1024 characters.

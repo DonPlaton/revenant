@@ -105,8 +105,10 @@ curl -fsSL https://raw.githubusercontent.com/DonPlaton/revenant/main/install.sh 
 `--cli` puts `revenant` on your PATH. `--ref v1.2.0` (`-Ref` on Windows) installs a specific
 version rather than the current main.
 
-To remove it: **Uninstall Revenant.cmd**, `.\uninstall.ps1`, or `./uninstall.sh`. They take back
-the shortcuts, the PATH entry and the downloaded copy. A clone is never touched.
+On Windows it registers itself under Settings, Apps, so you can remove it there like anything
+else. Otherwise: **Uninstall Revenant.cmd**, `.\uninstall.ps1`, or `./uninstall.sh`. They take
+back the shortcuts, the registration, the PATH entry and the downloaded copy. A clone is never
+touched.
 
 </details>
 

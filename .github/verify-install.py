@@ -37,6 +37,20 @@ def shortcut_target(link: Path) -> str:
     return out.stdout
 
 
+def registry_entry() -> str:
+    """The name and version Windows shows under Settings > Apps, or "" if absent."""
+    import winreg
+
+    path = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Revenant"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as key:
+            name = winreg.QueryValueEx(key, "DisplayName")[0]
+            version = winreg.QueryValueEx(key, "DisplayVersion")[0]
+            return f"{name} {version}"
+    except OSError:
+        return ""
+
+
 def managed_dir() -> Path:
     """Where the installer puts the app when it had to download it."""
     if sys.platform == "win32":
@@ -80,6 +94,15 @@ def main() -> int:
 
     if args.absent and managed.exists():
         problems.append(f"the downloaded copy is still there: {managed}")
+
+    if sys.platform == "win32":
+        listed = registry_entry()
+        if args.absent and listed:
+            problems.append("still listed in Settings > Apps")
+        elif not args.absent and not listed:
+            problems.append("not listed in Settings > Apps")
+        elif listed:
+            print(f"  Settings > Apps: {listed}")
 
     for launcher in launchers():
         exists = launcher.exists()
