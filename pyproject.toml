@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "revenant-sessions"
+version = "1.0.0"
+description = "Bring your AI coding-agent sessions back from the dead after a crash"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["claude-code", "session", "recovery", "crash", "terminal", "developer-tools"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Topic :: Utilities",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# Only the desktop window needs this; the CLI stays dependency-free.
+app = ["pywebview>=5.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+revenant = "revenant:main"
+
+[tool.setuptools]
+py-modules = ["revenant", "revenant_gui"]
+
+# There is no package for package-data to attach to, so the desktop UI ships as a
+# data file; revenant_gui looks for it next to the module first, then here.
+[tool.setuptools.data-files]
+"share/revenant/ui" = ["ui/index.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

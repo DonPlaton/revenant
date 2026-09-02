@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Revenant">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2926"/>
+      <stop offset="1" stop-color="#161513"/>
+    </linearGradient>
+    <linearGradient id="ghost" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#eb9a7c"/>
+      <stop offset="1" stop-color="#d1653f"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.36" r="0.55">
+      <stop offset="0" stop-color="#d97757" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#d97757" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="256" height="256" rx="58" fill="url(#plate)"/>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="56.5" fill="none" stroke="#3a3733" stroke-width="3"/>
+  <circle cx="128" cy="112" r="92" fill="url(#halo)"/>
+
+  <!-- the revenant: a shrouded figure whose hem breaks into the three peaks of a terminal caret -->
+  <path d="M128 46c-33 0-56 25-56 58v76l18-15 17 15 21-20 21 20 17-15 18 15v-76c0-33-23-58-56-58Z"
+        fill="url(#ghost)"/>
+  <circle cx="106" cy="106" r="11.5" fill="#161513"/>
+  <circle cx="150" cy="106" r="11.5" fill="#161513"/>
+  <path d="M104 146h48" stroke="#161513" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+</svg>
