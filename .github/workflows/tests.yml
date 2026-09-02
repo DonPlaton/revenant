@@ -64,47 +64,46 @@ jobs:
       - name: Nothing is left behind
         run: python .github/verify-install.py --absent
 
-      - name: Package this checkout as the archive the installer would download
+      - name: Package this checkout the way GitHub packages a download
+        # $HOME, not $RUNNER_TEMP: on Windows that is a backslash path, and passing
+        # it through Git Bash to tar mangles it into D\:\a\\_temp.
         run: |
-          mkdir -p "$RUNNER_TEMP/serve/revenant-ci"
-          tar --exclude=.git -cf - . | tar -xf - -C "$RUNNER_TEMP/serve/revenant-ci"
-          cd "$RUNNER_TEMP/serve"
+          rm -rf "$HOME/revenant-serve"
+          mkdir -p "$HOME/revenant-serve"
+          git archive --format=tar --prefix=revenant-ci/ HEAD | tar -xf - -C "$HOME/revenant-serve"
+          cd "$HOME/revenant-serve"
           if [ "$RUNNER_OS" = Windows ]; then
             powershell -NoProfile -Command "Compress-Archive -Path revenant-ci -DestinationPath src.zip -Force"
           else
             tar -czf src.tar.gz revenant-ci
           fi
-          ls -la "$RUNNER_TEMP/serve"
+          ls -l
 
       - name: Serve it
         run: |
-          python -m http.server 8765 --directory "$RUNNER_TEMP/serve" &
+          python -m http.server 8765 --directory "$HOME/revenant-serve" &
           for _ in $(seq 1 30); do
             curl -fsS -o /dev/null http://127.0.0.1:8765/ && break
             sleep 1
           done
 
       - name: Install the way the one-liner does, with no folder to start from
-        env:
-          REVENANT_ARCHIVE_URL: http://127.0.0.1:8765/src
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
-            REVENANT_ARCHIVE_URL="$REVENANT_ARCHIVE_URL.zip" \
+            REVENANT_ARCHIVE_URL=http://127.0.0.1:8765/src.zip \
               powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Content ./install.ps1 -Raw | Invoke-Expression"
           else
-            REVENANT_ARCHIVE_URL="$REVENANT_ARCHIVE_URL.tar.gz" bash -s < ./install.sh
+            REVENANT_ARCHIVE_URL=http://127.0.0.1:8765/src.tar.gz bash -s < ./install.sh
           fi
 
-      - name: The launcher runs the downloaded copy
-        run: python .github/verify-install.py
+      - name: The launcher runs the downloaded copy, not the clone
+        run: python .github/verify-install.py --managed
 
       - name: Uninstall takes the downloaded copy with it
         run: |
           if [ "$RUNNER_OS" = Windows ]; then
             powershell -NoProfile -ExecutionPolicy Bypass -File ./uninstall.ps1
-            test ! -d "$LOCALAPPDATA/Programs/Revenant"
           else
             ./uninstall.sh
-            test ! -d "$HOME/.local/share/revenant"
           fi
           python .github/verify-install.py --absent
