@@ -7,7 +7,7 @@ Small project, simple rules.
 ```bash
 git clone https://github.com/DonPlaton/revenant
 cd revenant
-python -m pytest tests -q     # 160 tests, no network, no real session touched
+python -m pytest tests -q     # 189 tests, no network, no real session touched
 python revenant.py --since 7d # the command line
 python revenant_gui.py        # the desktop app
 ```
@@ -16,20 +16,20 @@ python revenant_gui.py        # the desktop app
 
 | file | what lives there |
 |---|---|
-| `agents.py` | where each agent keeps its transcripts, how to read them, how to resume one |
-| `terminals.py` | every terminal backend, as pure argv builders |
+| `revenant_agents.py` | where each agent keeps its transcripts, how to read them, how to resume one |
+| `revenant_terminals.py` | every terminal backend, as pure argv builders |
 | `revenant.py` | discovery, filtering, rendering, the command line |
 | `revenant_gui.py` | the local HTTP backend behind the desktop window |
 | `ui/index.html` | the whole interface, one file, no build step |
 
-`revenant.py`, `agents.py` and `terminals.py` import nothing outside the standard library and must
+`revenant.py`, `revenant_agents.py` and `revenant_terminals.py` import nothing outside the standard library and must
 stay that way. The point of this tool is that it still runs on a machine you have only just
 rebooted. Only the desktop window may use `pywebview`, and it falls back to a browser window when
 that is missing.
 
 ## Adding an agent
 
-Subclass `Agent` in `agents.py` and add it to the `AGENTS` registry. You need to describe:
+Subclass `Agent` in `revenant_agents.py` and add it to the `AGENTS` registry. You need to describe:
 
 - where the config directory lives, and which environment variable overrides it
 - a glob for transcript files, and how to read a session id out of a path
@@ -44,7 +44,7 @@ Open an issue first so we can agree on the shape. Bring a real transcript, redac
 
 ## Adding a terminal
 
-Subclass `Terminal` in `terminals.py`, declare which platforms it runs on, implement `available()`
+Subclass `Terminal` in `revenant_terminals.py`, declare which platforms it runs on, implement `available()`
 and `plan()`, and add it to `ORDER` and `ALL`. A `plan()` builds argv lists and runs nothing, so
 your backend gets tested on every platform even though only one can execute it.
 

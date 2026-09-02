@@ -335,6 +335,9 @@ html[data-still] .sweep{display:none}
       data = await api(`/api/sessions?days=${stop().days}${agent ? "&agent=" + agent : ""}`);
     } catch {
       if (mine !== seq) return;
+      // Leaving the loading class on would dim the register for good, including
+      // every row a later reload paints under it.
+      el.register.classList.remove("loading");
       el.claim.textContent = "The local service stopped answering.";
       el.rows.innerHTML = "";
       return;

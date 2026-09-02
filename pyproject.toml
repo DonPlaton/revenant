@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "revenant-sessions"
-version = "1.1.0"
+version = "1.2.0"
 description = "Bring your AI coding-agent sessions back from the dead after a crash"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,7 +31,7 @@ dev = ["pytest>=8.0"]
 revenant = "revenant:main"
 
 [tool.setuptools]
-py-modules = ["revenant", "revenant_gui"]
+py-modules = ["revenant", "revenant_agents", "revenant_gui", "revenant_terminals"]
 
 # There is no package for package-data to attach to, so the desktop UI ships as a
 # data file; revenant_gui looks for it next to the module first, then here.

@@ -12,9 +12,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import agents  # noqa: E402
+import revenant_agents as agents  # noqa: E402
 import revenant  # noqa: E402
-import terminals  # noqa: E402
+import revenant_terminals as terminals  # noqa: E402
 
 
 NOW = datetime.now(timezone.utc)
@@ -321,7 +321,9 @@ def test_dead_pid_is_not_live(root: Path, live_agent: revenant.Agent) -> None:
         ("claude.exe.new", True),
         ("chrome.exe", False),
         ("python.exe", False),
-        ("", False),
+        # A name we could not read is not evidence that some other program holds
+        # the pid, so it counts as the agent and the session stays held back.
+        ("", True),
     ],
 )
 def test_a_renamed_binary_is_still_the_agent(name: str, expected: bool) -> None:
@@ -682,3 +684,59 @@ def test_a_truncated_tail_scan_does_not_invent_a_first_prompt(
     assert alpha.first_prompt == ""
     assert alpha.turns is None, "an incomplete tail is a lower bound, not a count"
     assert alpha.last_prompt == "real question about the code"
+
+
+def test_liveness_never_signals_a_process_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On Windows os.kill(pid, 0) terminates the process, so it must never run."""
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("os.kill would have killed a live agent")
+
+    monkeypatch.setattr(revenant.os, "name", "nt")
+    monkeypatch.setattr(revenant.os, "kill", forbidden)
+    assert revenant._pid_alive(4321) is True
+
+
+def test_liveness_falls_back_to_holding_everything_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the real check breaks, every pid is reported live rather than revivable."""
+    monkeypatch.setattr(revenant.os, "name", "nt")
+    monkeypatch.setattr(revenant, "_states_windows", lambda pids: 1 / 0)
+    monkeypatch.setattr(revenant, "_pid_alive", lambda pid: True)
+    assert revenant.process_states([11, 22]) == {11: None, 22: None}
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["claude", "claude.exe", "claude.exe.old.1788301984027", "claude-code-c", "node", "bun.exe"],
+)
+def test_a_truncated_or_renamed_binary_is_still_the_agent(name: str) -> None:
+    """/proc/<pid>/comm cuts names at fifteen characters and installers rename them."""
+    assert revenant.looks_like_agent(agents.AGENTS["claude-code"], name)
+
+
+@pytest.mark.parametrize("name", ["python3", "explorer.exe", "sshd"])
+def test_an_unrelated_program_is_not_the_agent(name: str) -> None:
+    assert not revenant.looks_like_agent(agents.AGENTS["claude-code"], name)
+
+
+def test_all_agents_refuses_flags_that_name_one_agent(root: Path, capsys) -> None:
+    """Honouring one of the two silently was the old behaviour, and it lied."""
+    assert revenant.main(["--all-agents", "--agent", "codex"]) == 2
+    assert revenant.main(["--all-agents", "--root", str(root)]) == 2
+    assert revenant.main(["--all-agents", "--from-snapshot"]) == 2
+    assert capsys.readouterr().out.count("revenant:") == 3
+
+
+def test_all_agents_still_honours_a_slug(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str | None] = []
+    monkeypatch.setattr(
+        revenant, "scan_sessions", lambda *a, slug_filter=None, **k: seen.append(slug_filter) or []
+    )
+    monkeypatch.setattr(revenant, "installed_agents", lambda: [revenant.CLAUDE_CODE])
+    revenant.main(["--all-agents", "--slug", "payments"])
+    assert seen == ["payments"]
+
+
+def test_the_retired_no_tabs_flag_is_still_accepted(root: Path) -> None:
+    """A 1.0 alias in someone's script should not become a usage error."""
+    assert revenant.main(["--root", str(root), "--since", "7d", "--no-tabs"]) == 0
