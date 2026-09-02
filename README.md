@@ -70,9 +70,11 @@ Nothing runs in the background, nothing starts at login, and no PATH is changed 
 Fair. Download the repository as a zip, or clone it, then:
 
 - **Windows**: double-click **Install Revenant.cmd**.
-- **macOS**: double-click **Install Revenant.command**. A zip download loses the executable bit,
-  so if nothing happens, run `chmod +x "Install Revenant.command"` once.
-- **Linux**: `./install.sh`
+- **macOS**: double-click **Install Revenant.command**. A zip download loses the executable bit
+  and marks the file as quarantined, so if nothing happens, run
+  `chmod +x "Install Revenant.command"` and open it once with right click, Open. Cloning avoids
+  both.
+- **Linux**: `bash install.sh`
 
 Both scripts behave the same either way. Run from a clone they point the launcher at that folder
 and copy nothing, which is what you want while you are working on it.

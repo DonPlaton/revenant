@@ -37,6 +37,14 @@ def shortcut_target(link: Path) -> str:
     return out.stdout
 
 
+def managed_dir() -> Path:
+    """Where the installer puts the app when it had to download it."""
+    if sys.platform == "win32":
+        return Path(os.environ["LOCALAPPDATA"]) / "Programs/Revenant"
+    data = os.environ.get("XDG_DATA_HOME") or str(HOME / ".local/share")
+    return Path(data) / "revenant"
+
+
 def launchers() -> list[Path]:
     """Every file an install is expected to leave behind, for this platform."""
     if sys.platform == "win32":
@@ -61,10 +69,17 @@ def app_path_in(launcher: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--absent", action="store_true", help="assert the install is gone instead")
+    parser.add_argument(
+        "--managed", action="store_true", help="assert the launcher runs a downloaded copy"
+    )
     args = parser.parse_args()
 
     problems: list[str] = []
     found = 0
+    managed = managed_dir()
+
+    if args.absent and managed.exists():
+        problems.append(f"the downloaded copy is still there: {managed}")
 
     for launcher in launchers():
         exists = launcher.exists()
@@ -88,6 +103,8 @@ def main() -> int:
             problems.append(f"{launcher} does not name revenant_gui.py")
         elif not targets[0].is_file():
             problems.append(f"{launcher} points at {targets[0]}, which does not exist")
+        elif args.managed and managed.resolve() not in targets[0].resolve().parents:
+            problems.append(f"{launcher} points at {targets[0]}, which is not inside {managed}")
 
         if sys.platform != "win32" and launcher.suffix != ".desktop" and not os.access(launcher, os.X_OK):
             problems.append(f"{launcher} is not executable")
