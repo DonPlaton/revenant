@@ -21,6 +21,8 @@ python revenant_gui.py        # the desktop app
 | `revenant.py` | discovery, filtering, rendering, the command line |
 | `revenant_gui.py` | the local HTTP backend behind the desktop window |
 | `ui/index.html` | the whole interface, one file, no build step |
+| `install.ps1` / `install.sh` | the quick start: run from a clone, or piped from the web |
+| `.github/verify-install.py` | what CI runs after an install to prove the launcher works |
 
 `revenant.py`, `revenant_agents.py` and `revenant_terminals.py` import nothing outside the standard library and must
 stay that way. The point of this tool is that it still runs on a machine you have only just
@@ -47,6 +49,15 @@ Open an issue first so we can agree on the shape. Bring a real transcript, redac
 Subclass `Terminal` in `revenant_terminals.py`, declare which platforms it runs on, implement `available()`
 and `plan()`, and add it to `ORDER` and `ALL`. A `plan()` builds argv lists and runs nothing, so
 your backend gets tested on every platform even though only one can execute it.
+
+## Changing the installers
+
+They run two ways and both are tested on all three platforms by the `install` job: from a clone,
+and piped from the web with no folder to start from. To exercise the download path without GitHub,
+serve an archive of the tree and point `REVENANT_ARCHIVE_URL` at it, which is exactly what CI does.
+
+An installer may only delete a folder it created. That is what the `.revenant-managed` marker is
+for, and why the uninstallers leave anything without one alone.
 
 ## Rules that are not negotiable
 
