@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: oklch(0.70 0.14 45); } a:hover { color: oklch(0.78 0.15 45); }
+    @keyframes rv-sweep { from { transform: translateY(-40px); } to { transform: translateY(300px); } }
+    @keyframes rv-stamp { 0% { opacity: 0; transform: scale(1.5) rotate(-8deg); } 60% { opacity: 1; transform: scale(0.96) rotate(-8deg); } 100% { opacity: 1; transform: scale(1) rotate(-8deg); } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
+  </style>
+</helmet>
+
+<div style="width: 1000px; height: 720px; background: oklch(0.18 0.008 60); color: oklch(0.93 0.012 80); font-family: 'IBM Plex Mono', Consolas, monospace; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+  <div style="position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 70% at 12% -10%, oklch(0.70 0.14 45 / 0.14), transparent 62%);"></div>
+
+  <div style="position: relative; display: flex; align-items: center; gap: 20px; padding: 0 18px 0 22px; height: 40px; border-bottom: 1px solid oklch(0.30 0.010 60);">
+    <span style="font-family: Spectral, Georgia, serif; font-size: 15px; letter-spacing: 0.34em;">REVENANT</span>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; gap: 14px; color: oklch(0.50 0.012 80);">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1 5.5h9" stroke="currentColor" stroke-width="1"/></svg>
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" stroke-width="1"/></svg>
+    </div>
+  </div>
+
+  <div style="position: relative; padding: 26px 40px 0 40px;">
+    <div style="font-size: 10px; letter-spacing: 0.24em; color: oklch(0.70 0.14 45); margin-bottom: 12px;">RAISING</div>
+    <div style="font-family: Spectral, Georgia, serif; font-size: 31px; line-height: 1.15;">Three terminals are opening.</div>
+  </div>
+
+  <!-- the register, mid-sweep -->
+  <div style="position: relative; flex-grow: 1; margin: 30px 40px 0 40px; border-top: 1px solid oklch(0.30 0.010 60); overflow: hidden;">
+    <div style="position: absolute; left: 74px; top: 0; bottom: 0; width: 1px; background: oklch(0.70 0.14 45 / 0.5);"></div>
+
+    <!-- the summoning sweep: a hard band, not a soft fade -->
+    <div style="position: absolute; left: 0; right: 0; top: 0; height: 40px; pointer-events: none; background: linear-gradient(180deg, transparent, oklch(0.70 0.14 45 / 0.22) 70%, oklch(0.70 0.14 45) 98%, transparent); animation: rv-sweep 1.4s steps(14, end) infinite;"></div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 96px; align-items: start; padding: 14px 0 15px 0; border-bottom: 1px solid oklch(0.24 0.008 60); background: linear-gradient(90deg, oklch(0.70 0.14 45 / 0.10), transparent 55%);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">18m</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; background: oklch(0.70 0.14 45);"></div></div>
+      <div style="padding-left: 16px;">
+        <div style="font-size: 14px; font-weight: 500;">payments-api</div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\payments-api</div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; padding-top: 1px;">
+        <span style="font-family: Spectral, Georgia, serif; font-size: 12px; letter-spacing: 0.22em; color: oklch(0.70 0.14 45); border: 1px solid oklch(0.70 0.14 45); padding: 3px 8px; transform: rotate(-8deg); animation: rv-stamp 400ms 100ms both;">RAISED</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 96px; align-items: start; padding: 14px 0 15px 0; border-bottom: 1px solid oklch(0.24 0.008 60); background: linear-gradient(90deg, oklch(0.70 0.14 45 / 0.10), transparent 55%);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">1h</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; background: oklch(0.70 0.14 45);"></div></div>
+      <div style="padding-left: 16px;">
+        <div style="font-size: 14px; font-weight: 500;">checkout-web</div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\checkout-web</div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; padding-top: 1px;">
+        <span style="font-family: Spectral, Georgia, serif; font-size: 12px; letter-spacing: 0.22em; color: oklch(0.70 0.14 45); border: 1px solid oklch(0.70 0.14 45); padding: 3px 8px; transform: rotate(-8deg); animation: rv-stamp 400ms 260ms both;">RAISED</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 96px; align-items: start; padding: 14px 0 15px 0; border-bottom: 1px solid oklch(0.24 0.008 60); background: linear-gradient(90deg, oklch(0.70 0.14 45 / 0.10), transparent 55%);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">4h</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; background: oklch(0.70 0.14 45);"></div></div>
+      <div style="padding-left: 16px;">
+        <div style="font-size: 14px; font-weight: 500;">ml-pipeline</div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\ml-pipeline</div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; padding-top: 1px;">
+        <span style="font-family: Spectral, Georgia, serif; font-size: 12px; letter-spacing: 0.22em; color: oklch(0.70 0.14 45); border: 1px solid oklch(0.70 0.14 45); padding: 3px 8px; transform: rotate(-8deg); animation: rv-stamp 400ms 420ms both;">RAISED</span>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 96px; align-items: start; padding: 14px 0 15px 0; opacity: 0.4;">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.50 0.012 80);">20h</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; border: 1px solid oklch(0.50 0.012 80);"></div></div>
+      <div style="padding-left: 16px;">
+        <div style="font-size: 14px; font-weight: 500;">docs-site</div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\docs-site</div>
+      </div>
+      <div></div>
+    </div>
+  </div>
+
+  <div style="position: relative; display: flex; align-items: center; gap: 26px; padding: 16px 40px 20px 40px; border-top: 1px solid oklch(0.30 0.010 60);">
+    <div style="flex-grow: 1; font-size: 12px; color: oklch(0.70 0.012 80);">Windows Terminal, three tabs.</div>
+    <div style="background: transparent; color: oklch(0.70 0.14 45); border: 1px solid oklch(0.70 0.14 45); padding: 10px 26px; font-size: 12px; letter-spacing: 0.26em;">RAISING</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

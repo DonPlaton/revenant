@@ -5,22 +5,19 @@ Finds every coding-agent session that was active in a chosen time window and
 restores it: a readable table, paste-ready `cd` + resume command pairs, a
 launcher script, or one terminal tab per session.
 
-Claude Code (the first supported agent) stores each conversation as
-`<config>/projects/<slug>/<uuid>.jsonl` and registers only *currently running*
-sessions in `<config>/sessions/<pid>.json`. The registry is pruned on startup,
-so after a crash it is empty - the transcripts are the durable source of truth,
-and this tool reads them.
+The agents themselves live in `agents.py`, the terminals in `terminals.py`, and
+the desktop app in `revenant_gui.py`. This module is the discovery, the filtering
+and the command line.
 
 Safety contract: Revenant never signals, kills, or writes to a running session.
-Sessions whose process is still alive are detected and excluded by default.
+Sessions whose process is still alive are detected and held back by default.
 
-Zero dependencies, stdlib only. The desktop UI lives in `revenant_gui.py`.
+Zero dependencies, stdlib only.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
 import os
@@ -28,79 +25,24 @@ import re
 import shutil
 import subprocess
 import sys
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Sequence
 
-__version__ = "1.0.0"
-APP_NAME = "Revenant"
+import terminals
+from agents import AGENTS, Agent, get_agent, installed_agents, is_meaningful
+from agents import DEFAULT_AGENT as CLAUDE_CODE
 
-# Records at the head of a transcript that carry cwd / version / branch.
-_HEAD_LINES = 80
-# Bytes read from the end of a transcript when the prompt history has no entry for it.
-_TAIL_BYTES = 256 * 1024
+__version__ = "1.1.0"
+APP_NAME = "Revenant"
 
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhdw])$", re.IGNORECASE)
 _DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
-_META_PROMPT_RE = re.compile(r"^\s*<(local-command-caveat|command-name|command-message)")
-
-
-# --------------------------------------------------------------------------- #
-# agents
-# --------------------------------------------------------------------------- #
-
-
-@dataclass(frozen=True)
-class Agent:
-    """A coding agent whose sessions Revenant knows how to find and resume.
-
-    Only Claude Code ships today; the seam exists so another agent that keeps
-    per-conversation transcripts on disk can be added without touching the rest.
-    """
-
-    key: str
-    label: str
-    env_var: str
-    default_dir: Path
-    resume_template: str
-    #: Process images a live session can run under - guards against PID reuse.
-    process_images: frozenset[str]
-
-    def config_dir(self, explicit: str | os.PathLike[str] | None = None) -> Path:
-        if explicit:
-            return Path(explicit).expanduser()
-        env = os.environ.get(self.env_var)
-        return Path(env).expanduser() if env else self.default_dir
-
-    def resume_command(self, session_id: str) -> str:
-        return self.resume_template.format(id=session_id)
-
-
-CLAUDE_CODE = Agent(
-    key="claude-code",
-    label="Claude Code",
-    env_var="CLAUDE_CONFIG_DIR",
-    default_dir=Path.home() / ".claude",
-    resume_template="claude --resume {id}",
-    process_images=frozenset({"claude.exe", "claude", "node.exe", "node", "bun.exe", "bun"}),
-)
-
-AGENTS: dict[str, Agent] = {CLAUDE_CODE.key: CLAUDE_CODE}
-
-
-def get_agent(key: str | None) -> Agent:
-    if not key:
-        return CLAUDE_CODE
-    try:
-        return AGENTS[key]
-    except KeyError:
-        raise SystemExit(f"Unknown agent {key!r}. Known: {', '.join(sorted(AGENTS))}")
 
 
 def state_dir() -> Path:
-    """Where Revenant keeps its own files - never inside the agent's config."""
+    """Where Revenant keeps its own files, never inside an agent's config."""
     if os.name == "nt":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / APP_NAME
@@ -133,18 +75,20 @@ class Session:
     live_pid: int | None = None
     live_name: str | None = None
     live_status: str | None = None
+    #: Why this session is being held back, or None when it is safe to revive.
+    live_reason: str | None = None
 
     @property
     def is_live(self) -> bool:
-        return self.live_pid is not None
+        return self.live_reason is not None
 
     @property
     def label(self) -> str:
         """Short human handle: the running session's name, else the directory.
 
-        Split on both separators instead of using `Path.name`: a config directory
-        written on Windows is readable on Linux, where a backslash is an ordinary
-        character and `Path(r"D:\\Coding\\x").name` is the whole string.
+        The flavour is picked from the separator actually present, because a config
+        directory written on Windows is readable on Linux, where a backslash is an
+        ordinary character.
         """
         if self.live_name:
             return self.live_name
@@ -157,6 +101,9 @@ class Session:
     @property
     def resume_command(self) -> str:
         return self.agent.resume_command(self.session_id)
+
+    def job(self) -> terminals.Job:
+        return terminals.Job(self.label, str(self.cwd), self.resume_command)
 
 
 # --------------------------------------------------------------------------- #
@@ -171,8 +118,8 @@ class BadTimeWindow(ValueError):
 def parse_when(value: str, *, now: datetime | None = None) -> datetime:
     """Parse `24h`, `90m`, `7d`, `2026-09-01`, or `2026-09-01T10:30` into a UTC datetime.
 
-    Bare durations are interpreted as "that long ago"; bare dates and datetimes
-    are read in local time and converted to UTC.
+    Bare durations mean "that long ago"; bare dates and datetimes are read in local
+    time and converted to UTC.
     """
     now = now or datetime.now(timezone.utc)
     text = value.strip()
@@ -183,16 +130,13 @@ def parse_when(value: str, *, now: datetime | None = None) -> datetime:
         return now - timedelta(seconds=amount * _DURATION_UNITS[unit])
 
     if text.lower() in {"today", "сегодня"}:
-        local_midnight = datetime.now().astimezone().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        return local_midnight.astimezone(timezone.utc)
+        midnight = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+        return midnight.astimezone(timezone.utc)
     if text.lower() in {"all", "any", "forever"}:
         return datetime.fromtimestamp(0, tz=timezone.utc)
 
-    normalized = text.replace("Z", "+00:00")
     try:
-        parsed = datetime.fromisoformat(normalized)
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
         raise BadTimeWindow(
             f"cannot read time {value!r}; use 24h, 7d, 2026-09-01 or 2026-09-01T10:30"
@@ -200,23 +144,6 @@ def parse_when(value: str, *, now: datetime | None = None) -> datetime:
     if parsed.tzinfo is None:
         parsed = parsed.astimezone()
     return parsed.astimezone(timezone.utc)
-
-
-def _from_iso(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-
-
-def _from_epoch_ms(value: object) -> datetime | None:
-    try:
-        return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)  # type: ignore[arg-type]
-    except (TypeError, ValueError, OSError, OverflowError):
-        return None
 
 
 def humanize_age(moment: datetime | None, *, now: datetime | None = None) -> str:
@@ -242,82 +169,118 @@ def humanize_age(moment: datetime | None, *, now: datetime | None = None) -> str
 
 
 def config_root(explicit: str | os.PathLike[str] | None = None, *, agent: Agent = CLAUDE_CODE) -> Path:
-    """Locate the agent's config directory."""
     return agent.config_dir(explicit)
 
 
-def _clean_prompt(text: object, *, limit: int = 160) -> str:
-    """Flatten a prompt to one printable line."""
-    if not isinstance(text, str):
-        return ""
-    flat = " ".join(text.split())
-    return flat[: limit - 1] + "…" if len(flat) > limit else flat
+#: Installers rename the running binary while they replace it, so the image name
+#: of a perfectly healthy session can be `claude.exe.old.1788301984027`.
+_RENAMED = re.compile(r"\.(old|new|bak|tmp)(\.\d+)?$")
 
 
-def _is_meaningful(prompt: str) -> bool:
-    """True for prompts a human actually typed, not slash commands or harness meta."""
-    if not prompt or _META_PROMPT_RE.match(prompt):
-        return False
-    return not prompt.startswith("/")
+def _states_windows(pids: Sequence[int]) -> dict[int, str | None]:
+    """Ask the kernel about each pid: its image name, None when it exists but will
+    not say, and absent when there is no such process.
 
-
-def load_history(root: Path) -> dict[str, list[tuple[datetime, str, str]]]:
-    """Index `history.jsonl` as sessionId -> [(timestamp, prompt, project)].
-
-    This file holds every prompt the user typed, is small, and gives turn counts
-    and prompt previews without parsing hundreds of megabytes of transcripts.
+    `tasklist` costs about half a second and walks every process on the machine.
+    This asks about the handful in the registry and costs microseconds.
     """
-    path = root / "history.jsonl"
-    index: dict[str, list[tuple[datetime, str, str]]] = defaultdict(list)
-    if not path.is_file():
-        return index
-    with path.open(encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            session_id = record.get("sessionId")
-            moment = _from_epoch_ms(record.get("timestamp"))
-            if not session_id or moment is None:
-                continue
-            index[session_id].append(
-                (moment, _clean_prompt(record.get("display")), record.get("project") or "")
-            )
-    for entries in index.values():
-        entries.sort(key=lambda item: item[0])
-    return index
+    import ctypes
+    from ctypes import wintypes
 
+    QUERY_LIMITED_INFORMATION = 0x1000
+    ACCESS_DENIED = 5
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.QueryFullProcessImageNameW.argtypes = (
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+    )
 
-def _process_table() -> dict[int, str]:
-    """Map pid -> image name. Empty on POSIX, where `os.kill(pid, 0)` is used instead."""
-    if os.name != "nt":
-        return {}
-    try:
-        completed = subprocess.run(
-            ["tasklist", "/NH", "/FO", "CSV"],
-            capture_output=True,
-            text=True,
-            timeout=20,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return {}
-    found: dict[int, str] = {}
-    for row in csv.reader(completed.stdout.splitlines()):
-        if len(row) < 2:
+    found: dict[int, str | None] = {}
+    for pid in pids:
+        ctypes.set_last_error(0)
+        handle = kernel32.OpenProcess(QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            # Denied means the process is there and guarded, which still counts.
+            if ctypes.get_last_error() == ACCESS_DENIED:
+                found[pid] = None
             continue
         try:
-            found[int(row[1])] = row[0].lower()
-        except ValueError:
-            continue
+            size = wintypes.DWORD(32768)
+            buffer = ctypes.create_unicode_buffer(size.value)
+            if kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+                found[pid] = PureWindowsPath(buffer.value).name.lower()
+            else:
+                found[pid] = None
+        finally:
+            kernel32.CloseHandle(handle)
     return found
 
 
-def _pid_alive_posix(pid: int) -> bool:
+def _states_posix(pids: Sequence[int]) -> dict[int, str | None]:
+    """Read `/proc` where it exists, otherwise ask `ps` about these pids only."""
+    found: dict[int, str | None] = {}
+    if Path("/proc").is_dir():
+        for pid in pids:
+            if not Path(f"/proc/{pid}").is_dir():
+                continue
+            try:
+                found[pid] = Path(f"/proc/{pid}/comm").read_text().strip().lower()
+            except OSError:
+                found[pid] = None
+        return found
+
+    if not pids:
+        return found
+    try:
+        completed = subprocess.run(
+            ["ps", "-o", "pid=,comm=", "-p", ",".join(str(p) for p in pids)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {pid: None for pid in pids if _pid_alive(pid)}
+    for line in completed.stdout.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2:
+            try:
+                found[int(parts[0])] = PurePosixPath(parts[1].strip()).name.lower()
+            except ValueError:
+                continue
+    return found
+
+
+def process_states(pids: Sequence[int]) -> dict[int, str | None]:
+    """Which of these pids exist, and what each one is running.
+
+    A pid missing from the result has no process. A pid mapped to None exists but
+    would not name itself, which is enough to keep its session out of harm's way.
+    """
+    unique = sorted({int(pid) for pid in pids})
+    if not unique:
+        return {}
+    try:
+        return _states_windows(unique) if os.name == "nt" else _states_posix(unique)
+    except Exception:  # noqa: BLE001 - a liveness check must never break a scan
+        return {pid: None for pid in unique if _pid_alive(pid)}
+
+
+def looks_like_agent(agent: Agent, name: str) -> bool:
+    """Is this executable plausibly the agent, allowing for a renamed binary?"""
+    base = _RENAMED.sub("", name.lower())
+    if base in agent.process_images:
+        return True
+    stems = {image.split(".", 1)[0] for image in agent.process_images}
+    return base.split(".", 1)[0] in stems
+
+
+def _pid_alive(pid: int) -> bool:
+    """Fallback liveness check when no process table is available."""
     try:
         os.kill(pid, 0)
     except TypeError:
@@ -332,115 +295,31 @@ def _pid_alive_posix(pid: int) -> bool:
 
 
 def load_live_registry(root: Path, *, agent: Agent = CLAUDE_CODE) -> dict[str, dict]:
-    """Read `<config>/sessions/*.json` and keep only entries with a live process.
-
-    Claude Code writes one file per running session and prunes them on startup,
-    so a stale file means a crashed session - which we still want to surface,
-    just not as *live*.
-    """
-    directory = root / "sessions"
-    if not directory.is_dir():
-        return {}
-
-    records: list[dict] = []
-    for path in directory.glob("*.json"):
-        try:
-            record = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(record, dict) and record.get("sessionId") and record.get("pid"):
-            records.append(record)
+    """Sessions the agent registered as running, filtered down to live processes."""
+    records = agent.live_registry(root)
     if not records:
         return {}
 
-    table = _process_table()
-    live: dict[str, dict] = {}
-    for record in records:
+    wanted: dict[str, int] = {}
+    for session_id, record in records.items():
         try:
-            pid = int(record["pid"])
-        except (TypeError, ValueError):
+            wanted[session_id] = int(record["pid"])
+        except (TypeError, ValueError, KeyError):
             continue  # a hand-edited or truncated registry file, not a live session
-        if os.name == "nt":
-            image = table.get(pid)
-            # A pruned-then-reused pid would otherwise be reported as live.
-            if image is None or image not in agent.process_images:
-                continue
-        elif not _pid_alive_posix(pid):
+
+    states = process_states(wanted.values())
+    live: dict[str, dict] = {}
+    for session_id, pid in wanted.items():
+        if pid not in states:
+            continue  # no such process, so the registry entry is stale
+        name = states[pid]
+        # Only a positive identification of some other program clears a session for
+        # revival. Anything we cannot read is held back, because relaunching a live
+        # session corrupts its transcript and being wrong the other way is a delay.
+        if name is not None and not looks_like_agent(agent, name):
             continue
-        live[record["sessionId"]] = record
+        live[session_id] = records[session_id]
     return live
-
-
-def _head_metadata(path: Path) -> dict:
-    """Pull cwd / version / branch / start time from the first records of a transcript."""
-    meta: dict = {}
-    try:
-        handle = path.open(encoding="utf-8", errors="replace")
-    except OSError:
-        return meta
-    with handle:
-        for index, line in enumerate(handle):
-            if index >= _HEAD_LINES and "cwd" in meta:
-                break
-            if index >= _HEAD_LINES * 8:  # transcript with an unusually long preamble
-                break
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if not isinstance(record, dict):
-                continue
-            for key in ("cwd", "version", "gitBranch"):
-                if key not in meta and record.get(key):
-                    meta[key] = record[key]
-            if "started" not in meta:
-                moment = _from_iso(record.get("timestamp"))
-                if moment:
-                    meta["started"] = moment
-    return meta
-
-
-def _tail_prompts(path: Path) -> tuple[str, str, int, bool]:
-    """Recover (first, last, count, complete) user prompts from a transcript's tail.
-
-    Fallback for sessions missing from history.jsonl (older versions, rotation).
-    `complete` is False when the file was larger than the tail window, in which
-    case the first prompt and the count describe the tail only and must not be
-    reported as the session's own.
-    """
-    complete = True
-    try:
-        size = path.stat().st_size
-        with path.open("rb") as handle:
-            if size > _TAIL_BYTES:
-                complete = False
-                handle.seek(size - _TAIL_BYTES)
-                handle.readline()  # drop the partial line
-            blob = handle.read().decode("utf-8", errors="replace")
-    except OSError:
-        return "", "", 0, False
-
-    prompts: list[str] = []
-    for line in blob.splitlines():
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(record, dict) or record.get("type") != "user":
-            continue
-        if record.get("isMeta") or record.get("isSidechain"):
-            continue
-        content = (record.get("message") or {}).get("content")
-        if isinstance(content, list):
-            content = " ".join(
-                part.get("text", "") for part in content if isinstance(part, dict)
-            )
-        text = _clean_prompt(content)
-        if _is_meaningful(text):
-            prompts.append(text)
-    if not prompts:
-        return "", "", 0, complete
-    return (prompts[0] if complete else ""), prompts[-1], len(prompts), complete
 
 
 def scan_sessions(
@@ -450,18 +329,19 @@ def scan_sessions(
     until: datetime | None = None,
     slug_filter: str | None = None,
     agent: Agent = CLAUDE_CODE,
+    now: datetime | None = None,
 ) -> list[Session]:
     """Collect every transcript whose last activity falls inside the window."""
-    projects = root / "projects"
-    if not projects.is_dir():
+    if not root.is_dir():
         return []
 
-    history = load_history(root)
+    now = now or datetime.now(timezone.utc)
+    history = agent.history(root)
     live = load_live_registry(root, agent=agent)
     sessions: list[Session] = []
 
-    for transcript in projects.glob("*/*.jsonl"):
-        slug = transcript.parent.name
+    for transcript in agent.transcripts(root):
+        slug = agent.group(transcript)
         if slug_filter and slug_filter.lower() not in slug.lower():
             continue
         try:
@@ -470,7 +350,7 @@ def scan_sessions(
             continue
         mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
 
-        session_id = transcript.stem
+        session_id = agent.session_id(transcript)
         entries = history.get(session_id, [])
         last_active = max([mtime, *(item[0] for item in entries)]) if entries else mtime
         if last_active < since or (until and last_active > until):
@@ -485,7 +365,7 @@ def scan_sessions(
             size_bytes=stat.st_size,
         )
 
-        meta = _head_metadata(transcript)
+        meta = agent.head(transcript)
         if meta.get("cwd"):
             session.cwd = Path(meta["cwd"])
         session.version = meta.get("version")
@@ -493,14 +373,14 @@ def scan_sessions(
         session.started_at = meta.get("started")
 
         if entries:
-            meaningful = [prompt for _, prompt, _ in entries if _is_meaningful(prompt)]
+            meaningful = [prompt for _, prompt, _ in entries if is_meaningful(prompt)]
             session.turns = len(meaningful)
             session.first_prompt = meaningful[0] if meaningful else entries[0][1]
             session.last_prompt = meaningful[-1] if meaningful else entries[-1][1]
             if session.cwd is None and entries[0][2]:
                 session.cwd = Path(entries[0][2])
         else:
-            first, last, count, complete = _tail_prompts(transcript)
+            first, last, count, complete = agent.tail(transcript)
             session.first_prompt, session.last_prompt = first, last
             # An incomplete tail gives only a lower bound, so leave it unknown.
             session.turns = count if complete else None
@@ -510,14 +390,32 @@ def scan_sessions(
             session.live_pid = registry.get("pid")
             session.live_name = registry.get("name")
             session.live_status = registry.get("status")
+            session.live_reason = f"process {registry.get('pid')}"
             if session.cwd is None and registry.get("cwd"):
                 session.cwd = Path(registry["cwd"])
+        elif agent.live_window and (now - mtime).total_seconds() < agent.live_window:
+            session.live_reason = "active moments ago"
 
         sessions.append(session)
 
     epoch = datetime.min.replace(tzinfo=timezone.utc)
     sessions.sort(key=lambda item: item.last_active or epoch, reverse=True)
     return sessions
+
+
+def scan_all(
+    *,
+    since: datetime,
+    until: datetime | None = None,
+    agents: Sequence[Agent] | None = None,
+) -> list[Session]:
+    """Scan every installed agent and merge the results, newest first."""
+    found: list[Session] = []
+    for agent in agents if agents is not None else installed_agents():
+        found += scan_sessions(agent.config_dir(), since=since, until=until, agent=agent)
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+    found.sort(key=lambda item: item.last_active or epoch, reverse=True)
+    return found
 
 
 def filter_sessions(
@@ -549,7 +447,7 @@ def filter_sessions(
         seen: set[str] = set()
         deduped: list[Session] = []
         for session in selected:  # already newest-first
-            key = str(session.cwd or session.project_slug).lower()
+            key = f"{session.agent.key}:{str(session.cwd or session.project_slug).lower()}"
             if key in seen:
                 continue
             seen.add(key)
@@ -565,7 +463,7 @@ def filter_sessions(
 
 
 def snapshot_path(root: Path | None = None, *, agent: Agent = CLAUDE_CODE) -> Path:
-    """Snapshots are per (agent, config root) - two roots must not share one file."""
+    """Snapshots are per (agent, config root); two roots must not share one file."""
     if root is None:
         return state_dir() / f"snapshot-{agent.key}.json"
     digest = hashlib.sha256(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:12]
@@ -576,8 +474,8 @@ def write_snapshot(root: Path, *, agent: Agent = CLAUDE_CODE) -> dict:
     """Record the currently running sessions so a crash can be undone exactly.
 
     Optional: transcripts alone already reconstruct the window. A snapshot adds
-    precision - it separates "was running when the machine died" from "I closed
-    that one on purpose an hour ago".
+    precision by separating "was running when the machine died" from "I closed that
+    one on purpose an hour ago".
     """
     live = load_live_registry(root, agent=agent)
     payload = {
@@ -585,14 +483,14 @@ def write_snapshot(root: Path, *, agent: Agent = CLAUDE_CODE) -> dict:
         "agent": agent.key,
         "sessions": [
             {
-                "sessionId": record.get("sessionId"),
+                "sessionId": session_id,
                 "cwd": record.get("cwd"),
                 "name": record.get("name"),
                 "status": record.get("status"),
                 "pid": record.get("pid"),
                 "startedAt": record.get("startedAt"),
             }
-            for record in live.values()
+            for session_id, record in live.items()
         ],
     }
     target = snapshot_path(root, agent=agent)
@@ -659,8 +557,7 @@ def _pad(text: str, width: int) -> str:
 def _truncate(text: str, width: int) -> str:
     if _display_width(text) <= width:
         return text
-    out = ""
-    used = 0
+    out, used = "", 0
     for char in text:
         step = _display_width(char)
         if used + step > width - 1:
@@ -678,38 +575,41 @@ def render_table(sessions: Sequence[Session], *, stream=None, now: datetime | No
         print("No sessions in this window. Widen it with --since 7d.", file=stream)
         return
 
+    multi_agent = len({s.agent.key for s in sessions}) > 1
     terminal = shutil.get_terminal_size((120, 25)).columns
     index_w = max(2, len(str(len(sessions))))
-    age_w = 5
-    turns_w = 5
+    age_w, turns_w = 5, 5
+    agent_w = max((len(s.agent.label) for s in sessions), default=0) if multi_agent else 0
     label_w = min(26, max(6, max(_display_width(s.label) for s in sessions)))
-    fixed = index_w + age_w + turns_w + label_w + 10
+    fixed = index_w + age_w + turns_w + label_w + agent_w + 11
     prompt_w = max(20, terminal - fixed - 2)
 
-    header = (
-        f"{palette.dim}{_pad('#', index_w)}  {_pad('AGE', age_w)} "
-        f"{_pad('TURNS', turns_w)} {_pad('SESSION', label_w)}  LAST PROMPT{palette.reset}"
-    )
+    header = f"{palette.dim}{_pad('#', index_w)}  {_pad('AGE', age_w)} {_pad('TURNS', turns_w)} "
+    if multi_agent:
+        header += f"{_pad('AGENT', agent_w)} "
+    header += f"{_pad('SESSION', label_w)}  LAST PROMPT{palette.reset}"
     print(header, file=stream)
 
     for number, session in enumerate(sessions, start=1):
         age = humanize_age(session.last_active, now=now)
         turns = str(session.turns) if session.turns is not None else "?"
-        mark = f"{palette.green}●{palette.reset}" if session.is_live else " "
-        prompt = _truncate(session.last_prompt or session.first_prompt or "—", prompt_w)
-        print(
-            f"{_pad(str(number), index_w)}{mark} {_pad(age, age_w)} "
-            f"{_pad(turns, turns_w)} {palette.bold}{_pad(_truncate(session.label, label_w), label_w)}{palette.reset}  "
-            f"{palette.dim}{prompt}{palette.reset}",
-            file=stream,
+        mark = f"{palette.green}*{palette.reset}" if session.is_live else " "
+        prompt = _truncate(session.last_prompt or session.first_prompt or "-", prompt_w)
+        row = f"{_pad(str(number), index_w)}{mark} {_pad(age, age_w)} {_pad(turns, turns_w)} "
+        if multi_agent:
+            row += f"{palette.cyan}{_pad(session.agent.label, agent_w)}{palette.reset} "
+        row += (
+            f"{palette.bold}{_pad(_truncate(session.label, label_w), label_w)}{palette.reset}  "
+            f"{palette.dim}{prompt}{palette.reset}"
         )
+        print(row, file=stream)
 
     print(file=stream)
     for number, session in enumerate(sessions, start=1):
         cwd = str(session.cwd) if session.cwd else f"<unknown: {session.project_slug}>"
         suffix = ""
         if session.is_live:
-            suffix = f"  {palette.yellow}[running, pid {session.live_pid} - skip unless you want a second view]{palette.reset}"
+            suffix = f"  {palette.yellow}[held back: {session.live_reason}]{palette.reset}"
         print(f"{palette.dim}{number}.{palette.reset} {cwd}{suffix}", file=stream)
 
     live_count = sum(1 for s in sessions if s.is_live)
@@ -738,43 +638,53 @@ def render_commands(sessions: Sequence[Session], *, shell: str = "pwsh") -> str:
         if shell == "cmd":
             lines.append(f":: {session.label} - {comment}")
             lines.append(f'cd /d "{cwd}"' if cwd else ":: unknown directory")
-            lines.append(session.resume_command)
         elif shell == "bash":
             lines.append(f"# {session.label} - {comment}")
             lines.append(f"cd {_quote_sh(cwd)}" if cwd else "# unknown directory")
-            lines.append(session.resume_command)
         else:
             lines.append(f"# {session.label} - {comment}")
             lines.append(f"cd {_quote_ps(cwd)}" if cwd else "# unknown directory")
-            lines.append(session.resume_command)
+        lines.append(session.resume_command)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_launcher(sessions: Sequence[Session], *, shell: str = "pwsh") -> str:
+def render_launcher(
+    sessions: Sequence[Session], *, shell: str = "pwsh", terminal: terminals.Terminal | None = None
+) -> str:
     """Build a script that opens every session in its own terminal tab."""
+    usable = [session for session in sessions if session.cwd]
+    skipped = [
+        f"# skipped {session.session_id}: unknown directory"
+        for session in sessions
+        if not session.cwd
+    ]
+
     if shell == "cmd":
         head = ["@echo off", "rem generated by Revenant", ""]
         body = [
-            # cmd needs double quotes; `!r` emits a single-quoted, backslash-escaped
-            # path it cannot cd into. Inside an already-quoted /k argument, a literal
-            # double quote is written twice.
-            f'start "" cmd /k "cd /d ""{session.cwd}"" && {session.resume_command}"'
-            if session.cwd
-            else f":: skipped {session.session_id}: unknown directory"
-            for session in sessions
+            # cmd needs `start /D` for the directory; a repr-quoted path breaks it.
+            f'start "" /D "{session.cwd}" cmd /k {session.resume_command}'
+            for session in usable
         ]
-        return "\n".join(head + body) + "\n"
+        tail = [line.replace("#", "::", 1) for line in skipped]
+        return "\n".join(head + body + tail) + "\n"
 
     if shell == "bash":
-        head = ["#!/usr/bin/env bash", "# generated by Revenant", "set -euo pipefail", ""]
-        body: list[str] = []
-        for session in sessions:
-            if not session.cwd:
-                body.append(f"# skipped {session.session_id}: unknown directory")
-                continue
-            body.append(f"( cd {_quote_sh(str(session.cwd))} && {session.resume_command} )")
-        return "\n".join(head + body) + "\n"
+        chosen = terminal or terminals.choose()
+        head = [
+            "#!/usr/bin/env bash",
+            f"# generated by Revenant for {chosen.label}",
+            "set -euo pipefail",
+            "",
+        ]
+        if not usable:
+            return "\n".join(head + skipped + ["echo 'Revenant: nothing to restore'"]) + "\n"
+        plan = chosen.plan([session.job() for session in usable])
+        body = [plan.render()]
+        if plan.note:
+            body.append(f"echo {_quote_sh(plan.note)}")
+        return "\n".join(head + skipped + ([""] if skipped else []) + body) + "\n"
 
     head = [
         "# generated by Revenant",
@@ -783,17 +693,11 @@ def render_launcher(sessions: Sequence[Session], *, shell: str = "pwsh") -> str:
         "$ErrorActionPreference = 'Stop'",
         "",
     ]
-    usable = [session for session in sessions if session.cwd]
-    skipped = [
-        f"# skipped {session.session_id}: unknown directory"
-        for session in sessions
-        if not session.cwd
-    ]
     if not usable:
         return "\n".join(head + skipped + ["Write-Host 'Revenant: nothing to restore'"]) + "\n"
 
     # One wt.exe call with `;`-separated tabs; the semicolons belong to wt, so
-    # PowerShell must not eat them - hence the backtick escape.
+    # PowerShell must not eat them, hence the backtick escape.
     parts: list[str] = ["  wt.exe -w new"]
     for index, session in enumerate(usable):
         prefix = "    " if index == 0 else "    `; "
@@ -808,7 +712,7 @@ def render_launcher(sessions: Sequence[Session], *, shell: str = "pwsh") -> str:
     fallback = [
         "  if ($LASTEXITCODE -ne 0) { throw 'wt.exe failed' }",
         "} catch {",
-        "  Write-Host 'Windows Terminal unavailable - opening one window per session.'",
+        "  Write-Host 'Windows Terminal unavailable, opening one window per session.'",
         "  $failed = $true",
         "}",
         "",
@@ -838,62 +742,27 @@ def render_launcher(sessions: Sequence[Session], *, shell: str = "pwsh") -> str:
 # --------------------------------------------------------------------------- #
 
 
-def _shell_exe() -> str:
-    return "pwsh" if shutil.which("pwsh") else "powershell"
-
-
-def build_wt_argv(sessions: Sequence[Session], *, window: str = "new", profile: str | None = None) -> list[str]:
-    """Assemble a single `wt.exe` invocation opening one tab per session."""
-    argv: list[str] = ["wt.exe", "-w", window]
-    shell_exe = _shell_exe()
-    first = True
-    for session in sessions:
-        if not session.cwd:
-            continue
-        if not first:
-            argv.append(";")
-        first = False
-        argv += ["new-tab", "--title", session.label, "-d", str(session.cwd)]
-        if profile:
-            argv += ["-p", profile]
-        argv += [shell_exe, "-NoExit", "-Command", session.resume_command]
-    return argv
-
-
-def _spawn_separate_windows(sessions: Sequence[Session], *, stream=None) -> int:
-    """Fallback path: one console window per session, no Windows Terminal needed.
-
-    `wt.exe` on Windows is a Store app-execution alias inside the ACL-locked
-    WindowsApps folder, and some contexts (services, sandboxes, restricted shells)
-    are denied execution of it. `start` always works.
-    """
-    stream = stream if stream is not None else sys.stdout
-    shell = _shell_exe()
-    opened = 0
-    for session in sessions:
-        try:
-            subprocess.Popen(
-                ["cmd", "/c", "start", "", shell, "-NoExit", "-Command", session.resume_command],
-                cwd=str(session.cwd),
-                close_fds=True,
-            )
-            opened += 1
-        except OSError as exc:
-            print(f"Could not open {session.label}: {exc}", file=stream)
-    print(f"Opened {opened} window(s).", file=stream)
-    return 0 if opened else 4
+def plan_launch(
+    sessions: Sequence[Session], *, terminal: str | None = None, window: str = "new", profile: str | None = None
+) -> tuple[terminals.Terminal, terminals.Plan]:
+    """Choose a terminal and build the commands, without running anything."""
+    chosen = terminals.choose(terminal)
+    jobs = [session.job() for session in sessions if session.cwd]
+    if isinstance(chosen, terminals.WindowsTerminal):
+        return chosen, chosen.plan(jobs, window=window, profile=profile)
+    return chosen, chosen.plan(jobs)
 
 
 def launch(
     sessions: Sequence[Session],
     *,
+    terminal: str | None = None,
     window: str = "new",
     profile: str | None = None,
     dry_run: bool = False,
-    prefer_tabs: bool = True,
     stream=None,
 ) -> int:
-    """Open the selected sessions: Windows Terminal tabs, or one window each."""
+    """Open the selected sessions in a terminal."""
     stream = stream if stream is not None else sys.stdout
     usable = [s for s in sessions if s.cwd]
     if not usable:
@@ -902,47 +771,44 @@ def launch(
 
     live = [s for s in usable if s.is_live]
     if live:
-        names = ", ".join(f"{s.label}(pid {s.live_pid})" for s in live)
+        names = ", ".join(f"{s.label} ({s.live_reason})" for s in live)
         print(
-            f"Refusing to launch {len(live)} still-running session(s): {names}.\n"
-            "Two processes on one transcript corrupt it. Close them first, or drop --include-live.",
+            f"Refusing to launch {len(live)} session(s) that may still be running: {names}.\n"
+            "Two processes on one transcript corrupt it. Close them first.",
             file=stream,
         )
         return 2
 
-    argv = build_wt_argv(usable, window=window, profile=profile)
+    chosen, plan = plan_launch(usable, terminal=terminal, window=window, profile=profile)
     if dry_run:
-        print(" ".join(f'"{part}"' if " " in part else part for part in argv), file=stream)
+        print(plan.render(), file=stream)
         return 0
 
-    if os.name != "nt":
-        print(
-            "Automatic launching is Windows-only. Use --print or --emit revive.sh instead.",
-            file=stream,
-        )
+    jobs = [session.job() for session in usable]
+    opened, message = terminals.run(plan)
+    if not opened and not terminal:
+        # A terminal can look available and still refuse to run, so try the next one.
+        for candidate in terminals.fallbacks(chosen):
+            print(f"{chosen.label} would not start ({message}); trying {candidate.label}.", file=stream)
+            chosen = candidate
+            plan = candidate.plan(jobs)
+            opened, message = terminals.run(plan)
+            if opened:
+                break
+    if not opened:
+        print(f"{chosen.label} would not start: {message}", file=stream)
         return 3
 
-    if prefer_tabs and (shutil.which("wt.exe") or shutil.which("wt")):
-        try:
-            process = subprocess.Popen(argv, close_fds=True)
-        except OSError as exc:
-            print(f"Windows Terminal refused to start ({exc}); opening separate windows.", file=stream)
-        else:
-            try:
-                # wt returns immediately on success; a fast non-zero exit means it failed.
-                if process.wait(timeout=2) == 0:
-                    print(f"Opened {len(usable)} tab(s) in Windows Terminal.", file=stream)
-                    return 0
-                print("Windows Terminal exited with an error; opening separate windows.", file=stream)
-            except subprocess.TimeoutExpired:
-                print(f"Opened {len(usable)} tab(s) in Windows Terminal.", file=stream)
-                return 0
-
-    return _spawn_separate_windows(usable, stream=stream)
+    where = "tab" if chosen.tabs else "window"
+    count = len(usable) if chosen.tabs and len(plan.commands) == 1 else opened
+    print(f"Opened {count} {where}(s) in {chosen.label}.", file=stream)
+    if message:
+        print(message, file=stream)
+    return 0
 
 
 def pick(sessions: Sequence[Session], *, stream=None, reader=input) -> list[Session]:
-    """Ask which of the listed sessions to act on. `all`/empty selects everything."""
+    """Ask which of the listed sessions to act on. `all` or empty selects everything."""
     stream = stream if stream is not None else sys.stdout
     if not sessions:
         return []
@@ -981,10 +847,11 @@ def pick(sessions: Sequence[Session], *, stream=None, reader=input) -> list[Sess
 
 
 def session_to_dict(session: Session) -> dict:
-    """Serialise one session - shared by `--json` and the desktop UI."""
+    """Serialise one session, shared by `--json` and the desktop UI."""
     return {
         "sessionId": session.session_id,
         "agent": session.agent.key,
+        "agentLabel": session.agent.label,
         "cwd": str(session.cwd) if session.cwd else None,
         "label": session.label,
         "lastActive": session.last_active.isoformat() if session.last_active else None,
@@ -997,6 +864,7 @@ def session_to_dict(session: Session) -> dict:
         "version": session.version,
         "sizeBytes": session.size_bytes,
         "live": session.is_live,
+        "liveReason": session.live_reason,
         "pid": session.live_pid,
         "resume": session.resume_command,
         "transcript": str(session.transcript),
@@ -1022,35 +890,39 @@ def build_parser() -> argparse.ArgumentParser:
             "  revenant                      sessions from the last 24h\n"
             "  revenant --since 7d --pick    choose from the last week\n"
             "  revenant --since 6h --launch  reopen each in its own terminal tab\n"
-            "  revenant --emit revive.ps1    write a launcher script\n"
-            "  revenant snapshot             record what is running right now\n"
+            "  revenant --all-agents         every agent installed here\n"
+            "  revenant --emit revive.sh     write a launcher script\n"
             "  revenant gui                  open the desktop app\n"
+            "  revenant agents               what is installed and where\n"
         ),
     )
-    parser.add_argument("command", nargs="?", default="list", choices=["list", "snapshot", "gui"])
-    parser.add_argument("--agent", default="claude-code", help="which agent's sessions to look for")
-    parser.add_argument("--root", help="agent config dir (default: $CLAUDE_CONFIG_DIR or ~/.claude)")
+    parser.add_argument(
+        "command", nargs="?", default="list", choices=["list", "snapshot", "gui", "agents", "terminals"]
+    )
+    parser.add_argument("--agent", default=None, help=f"which agent to look for ({', '.join(AGENTS)})")
+    parser.add_argument("--all-agents", action="store_true", help="scan every agent installed here")
+    parser.add_argument("--root", help="agent config dir (default: the agent's own location)")
     parser.add_argument("--since", default="24h", help="window start: 24h, 7d, today, all, 2026-09-01")
     parser.add_argument("--until", help="window end (same formats)")
-    parser.add_argument("--dir", action="append", default=[], help="only sessions whose path contains this (repeatable)")
-    parser.add_argument("--slug", help="only this projects/<slug> directory")
-    parser.add_argument("--min-turns", type=int, default=1, help="skip sessions with fewer user prompts (default 1)")
+    parser.add_argument("--dir", action="append", default=[], help="only sessions whose path contains this")
+    parser.add_argument("--slug", help="only this transcript folder")
+    parser.add_argument("--min-turns", type=int, default=1, help="skip sessions with fewer prompts (default 1)")
     parser.add_argument("--limit", type=int, default=40, help="max sessions to show (default 40, 0 = no limit)")
     parser.add_argument("--latest-per-dir", action="store_true", help="keep only the newest session per directory")
-    parser.add_argument("--include-live", action="store_true", help="also show sessions that are still running")
-    parser.add_argument("--only-live", action="store_true", help="show only sessions that are still running")
+    parser.add_argument("--include-live", action="store_true", help="also show sessions that may still be running")
+    parser.add_argument("--only-live", action="store_true", help="show only sessions that may still be running")
     parser.add_argument("--from-snapshot", action="store_true", help="restore the set recorded by `revenant snapshot`")
 
     output = parser.add_argument_group("output")
-    output.add_argument("--print", dest="print_cmds", action="store_true", help="print paste-ready cd + resume commands")
+    output.add_argument("--print", dest="print_cmds", action="store_true", help="print paste-ready commands")
     output.add_argument("--emit", metavar="FILE", help="write a launcher script (.ps1 / .sh / .cmd)")
-    output.add_argument("--launch", action="store_true", help="open each session in its own terminal tab")
+    output.add_argument("--launch", action="store_true", help="open each session in a terminal")
     output.add_argument("--pick", action="store_true", help="choose interactively before acting")
-    output.add_argument("--dry-run", action="store_true", help="with --launch, show the command instead of running it")
+    output.add_argument("--dry-run", action="store_true", help="with --launch, show the commands instead")
     output.add_argument("--json", dest="as_json", action="store_true", help="machine-readable output")
-    output.add_argument("--shell", choices=["pwsh", "bash", "cmd"], default="pwsh", help="target shell (default pwsh)")
-    output.add_argument("--window", default="new", help="wt.exe target window: new, 0, or a name (default new)")
-    output.add_argument("--no-tabs", action="store_true", help="open one window per session instead of tabs")
+    output.add_argument("--shell", choices=["pwsh", "bash", "cmd"], default=None, help="target shell for --print/--emit")
+    output.add_argument("--terminal", help=f"where to open sessions ({', '.join(sorted(terminals.BY_KEY))})")
+    output.add_argument("--window", default="new", help="wt.exe target window: new, 0, or a name")
     output.add_argument("--profile", help="Windows Terminal profile for new tabs")
     output.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     return parser
@@ -1064,8 +936,31 @@ def _restrict_to_snapshot(sessions: list[Session], snapshot: dict | None, *, str
     wanted = {entry.get("sessionId") for entry in snapshot.get("sessions", [])}
     captured = snapshot.get("captured_at", "?")
     filtered = [s for s in sessions if s.session_id in wanted]
-    print(f"Snapshot from {captured}: {len(wanted)} session(s) recorded, {len(filtered)} found on disk.\n", file=stream)
+    print(f"Snapshot from {captured}: {len(wanted)} recorded, {len(filtered)} found on disk.\n", file=stream)
     return filtered
+
+
+def _print_agents(stream) -> int:
+    for agent in AGENTS.values():
+        root = agent.config_dir()
+        mark = "installed" if root.is_dir() else "not found"
+        print(f"{agent.key:<12} {agent.label:<14} {mark:<11} {root}", file=stream)
+        if agent.liveness_note:
+            print(f"{'':<12} {agent.liveness_note}", file=stream)
+    return 0
+
+
+def _print_terminals(stream) -> int:
+    current = terminals.choose()
+    for cls in terminals.ALL:
+        terminal = cls()
+        if not terminal.supported():
+            continue
+        state = "available" if terminal.available() else "not installed"
+        chosen = "  <- default here" if terminal.key == current.key else ""
+        tabs = "tabs" if terminal.tabs else "windows"
+        print(f"{terminal.key:<16} {terminal.label:<18} {state:<14} {tabs}{chosen}", file=stream)
+    return 0
 
 
 def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
@@ -1078,27 +973,16 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
 
     args = build_parser().parse_args(argv)
     agent = get_agent(args.agent)
+    shell = args.shell or ("pwsh" if os.name == "nt" else "bash")
 
+    if args.command == "agents":
+        return _print_agents(stream)
+    if args.command == "terminals":
+        return _print_terminals(stream)
     if args.command == "gui":
         from revenant_gui import run_gui  # lazy: the CLI itself stays dependency-free
 
         return run_gui(agent=agent, root=args.root)
-
-    root = config_root(args.root, agent=agent)
-    if not root.is_dir():
-        print(f"{agent.label} config dir not found: {root}", file=stream)
-        return 1
-
-    if args.command == "snapshot":
-        payload = write_snapshot(root, agent=agent)
-        count = len(payload["sessions"])
-        print(
-            f"Recorded {count} running session(s) to {snapshot_path(root, agent=agent)}",
-            file=stream,
-        )
-        for entry in payload["sessions"]:
-            print(f"  {entry['name'] or entry['sessionId'][:8]}  {entry['cwd']}", file=stream)
-        return 0
 
     try:
         since = parse_when(args.since)
@@ -1106,14 +990,38 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
     except BadTimeWindow as exc:
         print(f"revenant: {exc}", file=stream)
         return 2
-    sessions = scan_sessions(root, since=since, until=until, slug_filter=args.slug, agent=agent)
+
+    root = config_root(args.root, agent=agent)
+
+    if args.command == "snapshot":
+        if not root.is_dir():
+            print(f"{agent.label} config dir not found: {root}", file=stream)
+            return 1
+        payload = write_snapshot(root, agent=agent)
+        print(
+            f"Recorded {len(payload['sessions'])} running session(s) to "
+            f"{snapshot_path(root, agent=agent)}",
+            file=stream,
+        )
+        for entry in payload["sessions"]:
+            print(f"  {entry['name'] or entry['sessionId'][:8]}  {entry['cwd']}", file=stream)
+        return 0
+
+    if args.all_agents:
+        sessions = scan_all(since=since, until=until)
+        if not sessions and not installed_agents():
+            print("No agents found on this machine.", file=stream)
+            return 1
+    else:
+        if not root.is_dir():
+            print(f"{agent.label} config dir not found: {root}", file=stream)
+            return 1
+        sessions = scan_sessions(root, since=since, until=until, slug_filter=args.slug, agent=agent)
 
     if args.from_snapshot:
         # Keep stdout pure when the caller asked for machine-readable output.
         notice = sys.stderr if args.as_json else stream
-        sessions = _restrict_to_snapshot(
-            sessions, read_snapshot(root, agent=agent), stream=notice
-        )
+        sessions = _restrict_to_snapshot(sessions, read_snapshot(root, agent=agent), stream=notice)
 
     selected = filter_sessions(
         sessions,
@@ -1142,31 +1050,32 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
 
     if args.print_cmds:
         print(file=stream)
-        print(render_commands(selected, shell=args.shell), file=stream)
+        print(render_commands(selected, shell=shell), file=stream)
 
     if args.emit:
         target = Path(args.emit).expanduser()
-        suffix = target.suffix.lower()
-        shell = {"ps1": "pwsh", "sh": "bash", "bash": "bash", "cmd": "cmd", "bat": "cmd"}.get(
-            suffix.lstrip("."), args.shell
-        )
+        by_suffix = {"ps1": "pwsh", "sh": "bash", "bash": "bash", "cmd": "cmd", "bat": "cmd"}
+        emit_shell = by_suffix.get(target.suffix.lower().lstrip("."), shell)
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(render_launcher(selected, shell=shell), encoding="utf-8")
+        chosen = terminals.choose(args.terminal) if emit_shell == "bash" else None
+        target.write_text(render_launcher(selected, shell=emit_shell, terminal=chosen), encoding="utf-8")
+        if emit_shell == "bash":
+            target.chmod(target.stat().st_mode | 0o111)
         print(f"\nWrote {target} ({len(selected)} session(s)). Run it to bring them back.", file=stream)
 
     if args.launch:
         return launch(
             selected,
+            terminal=args.terminal,
             window=args.window,
             profile=args.profile,
             dry_run=args.dry_run,
-            prefer_tabs=not args.no_tabs,
             stream=stream,
         )
 
     if not acting:
         print(
-            "\nNext: --print (commands) · --emit revive.ps1 (script) · --launch (open tabs) · --pick (choose first)",
+            "\nNext: --print (commands) - --emit revive.sh (script) - --launch (open them) - --pick (choose first)",
             file=stream,
         )
     return 0

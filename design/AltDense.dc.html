@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: oklch(0.70 0.14 45); } a:hover { color: oklch(0.78 0.15 45); }
+  </style>
+</helmet>
+
+<div style="width: 1000px; height: 720px; background: oklch(0.18 0.008 60); color: oklch(0.93 0.012 80); font-family: 'IBM Plex Mono', Consolas, monospace; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+  <div style="display: flex; align-items: center; gap: 20px; padding: 0 18px 0 22px; height: 40px; border-bottom: 1px solid oklch(0.30 0.010 60);">
+    <span style="font-family: Spectral, Georgia, serif; font-size: 15px; letter-spacing: 0.34em;">REVENANT</span>
+    <span style="font-size: 10px; letter-spacing: 0.18em; color: oklch(0.50 0.012 80);">ALTERNATE DIRECTION, SKETCH</span>
+    <div style="flex-grow: 1;"></div>
+  </div>
+
+  <!-- horizontal time axis with a mark per session: the window is a bracket you widen -->
+  <div style="padding: 30px 40px 0 40px;">
+    <div style="font-family: Spectral, Georgia, serif; font-size: 22px; margin-bottom: 22px;">Sessions plotted where they died.</div>
+    <div style="position: relative; height: 120px; border-left: 1px solid oklch(0.30 0.010 60); border-bottom: 1px solid oklch(0.30 0.010 60);">
+      <div style="position: absolute; left: 0; width: 52%; top: 0; bottom: 0; background: oklch(0.70 0.14 45 / 0.07); border-right: 2px solid oklch(0.70 0.14 45);"></div>
+      <div style="position: absolute; left: 3%; bottom: 0; width: 5px; height: 74px; background: oklch(0.70 0.14 45);"></div>
+      <div style="position: absolute; left: 9%; bottom: 0; width: 5px; height: 48px; background: oklch(0.70 0.14 45);"></div>
+      <div style="position: absolute; left: 17%; bottom: 0; width: 5px; height: 96px; background: oklch(0.70 0.14 45);"></div>
+      <div style="position: absolute; left: 24%; bottom: 0; width: 5px; height: 30px; background: repeating-linear-gradient(45deg, oklch(0.62 0.05 130) 0 1px, transparent 1px 3px); border: 1px solid oklch(0.62 0.05 130);"></div>
+      <div style="position: absolute; left: 33%; bottom: 0; width: 5px; height: 62px; background: oklch(0.70 0.14 45);"></div>
+      <div style="position: absolute; left: 45%; bottom: 0; width: 5px; height: 40px; background: oklch(0.70 0.14 45);"></div>
+      <div style="position: absolute; left: 61%; bottom: 0; width: 5px; height: 55px; background: oklch(0.50 0.012 80);"></div>
+      <div style="position: absolute; left: 74%; bottom: 0; width: 5px; height: 22px; background: oklch(0.50 0.012 80);"></div>
+      <div style="position: absolute; left: 88%; bottom: 0; width: 5px; height: 68px; background: oklch(0.50 0.012 80);"></div>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 10px; color: oklch(0.50 0.012 80); margin-top: 6px;">
+      <span>now</span><span>6h</span><span>1d</span><span>7d</span><span>30d</span><span>90d</span>
+    </div>
+  </div>
+
+  <!-- one line per session: twice the density, no room for the prompt -->
+  <div style="flex-grow: 1; margin: 26px 40px 0 40px; border-top: 1px solid oklch(0.30 0.010 60); overflow: hidden; font-size: 12px;">
+    <div style="display: grid; grid-template-columns: 20px 54px minmax(0, 1fr) 200px 44px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid oklch(0.21 0.008 60);">
+      <div style="width: 8px; height: 8px; background: oklch(0.70 0.14 45);"></div><span style="color: oklch(0.70 0.012 80);">18m</span><span>payments-api</span><span style="color: oklch(0.50 0.012 80); font-size: 10.5px;">C:\dev\payments-api</span><span style="text-align: right; color: oklch(0.50 0.012 80);">24</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 20px 54px minmax(0, 1fr) 200px 44px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid oklch(0.21 0.008 60);">
+      <div style="width: 8px; height: 8px; background: oklch(0.70 0.14 45);"></div><span style="color: oklch(0.70 0.012 80);">52m</span><span>checkout-web</span><span style="color: oklch(0.50 0.012 80); font-size: 10.5px;">C:\dev\checkout-web</span><span style="text-align: right; color: oklch(0.50 0.012 80);">12</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 20px 54px minmax(0, 1fr) 200px 44px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid oklch(0.21 0.008 60);">
+      <div style="width: 8px; height: 8px; background: oklch(0.70 0.14 45);"></div><span style="color: oklch(0.70 0.012 80);">4h</span><span>ml-pipeline</span><span style="color: oklch(0.50 0.012 80); font-size: 10.5px;">C:\dev\ml-pipeline</span><span style="text-align: right; color: oklch(0.50 0.012 80);">31</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 20px 54px minmax(0, 1fr) 200px 44px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid oklch(0.21 0.008 60); opacity: 0.5;">
+      <div style="width: 8px; height: 8px; border: 1px solid oklch(0.62 0.05 130);"></div><span>now</span><span>infra</span><span style="color: oklch(0.50 0.012 80); font-size: 10.5px;">held, still running</span><span style="text-align: right; color: oklch(0.50 0.012 80);">8</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 20px 54px minmax(0, 1fr) 200px 44px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid oklch(0.21 0.008 60);">
+      <div style="width: 8px; height: 8px; border: 1px solid oklch(0.50 0.012 80);"></div><span style="color: oklch(0.70 0.012 80);">20h</span><span>docs-site</span><span style="color: oklch(0.50 0.012 80); font-size: 10.5px;">C:\dev\docs-site</span><span style="text-align: right; color: oklch(0.50 0.012 80);">15</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 20px 54px minmax(0, 1fr) 200px 44px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid oklch(0.21 0.008 60);">
+      <div style="width: 8px; height: 8px; border: 1px solid oklch(0.50 0.012 80);"></div><span style="color: oklch(0.70 0.012 80);">1d</span><span>mobile-app</span><span style="color: oklch(0.50 0.012 80); font-size: 10.5px;">C:\dev\mobile-app</span><span style="text-align: right; color: oklch(0.50 0.012 80);">19</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 20px 54px minmax(0, 1fr) 200px 44px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid oklch(0.21 0.008 60);">
+      <div style="width: 8px; height: 8px; border: 1px solid oklch(0.50 0.012 80);"></div><span style="color: oklch(0.70 0.012 80);">2d</span><span>analytics</span><span style="color: oklch(0.50 0.012 80); font-size: 10.5px;">C:\dev\analytics</span><span style="text-align: right; color: oklch(0.50 0.012 80);">11</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 20px 54px minmax(0, 1fr) 200px 44px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid oklch(0.21 0.008 60);">
+      <div style="width: 8px; height: 8px; border: 1px solid oklch(0.50 0.012 80);"></div><span style="color: oklch(0.70 0.012 80);">4d</span><span>scraper</span><span style="color: oklch(0.50 0.012 80); font-size: 10.5px;">C:\dev\scraper</span><span style="text-align: right; color: oklch(0.50 0.012 80);">22</span>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 26px; padding: 16px 40px 20px 40px; border-top: 1px solid oklch(0.30 0.010 60);">
+    <div style="flex-grow: 1; font-size: 12px; color: oklch(0.70 0.012 80);">Twice the rows on screen. The last prompt does not fit.</div>
+    <div style="background: oklch(0.70 0.14 45); color: oklch(0.18 0.008 60); padding: 11px 26px; font-size: 12px; letter-spacing: 0.26em; font-weight: 500;">REVIVE 3</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

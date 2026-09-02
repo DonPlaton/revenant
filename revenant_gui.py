@@ -31,6 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import agents as agent_registry
 import revenant
 from revenant import Agent, CLAUDE_CODE
 
@@ -70,57 +71,92 @@ class Backend:
     def __init__(self, *, agent: Agent = CLAUDE_CODE, root: str | None = None) -> None:
         self.agent = agent
         self.root = revenant.config_root(root, agent=agent)
+        self.explicit_root = root is not None
         self.token = secrets.token_urlsafe(24)
         self._stop = threading.Event()
         self._lock = threading.Lock()
-        self._cache: tuple[float, float, list[revenant.Session]] | None = None
+        self._cache: tuple[tuple[float, str], float, list[revenant.Session]] | None = None
         self.last_seen = time.monotonic()
 
     # -- data ------------------------------------------------------------- #
 
-    def _scan(self, days: float) -> list[revenant.Session]:
-        """Scan back `days`, reusing an identical scan taken moments ago."""
+    def choices(self) -> list[dict]:
+        """The agents this machine can offer, plus the combined view."""
+        found = [
+            {"key": agent.key, "label": agent.label, "note": agent.liveness_note}
+            for agent in self.available()
+        ]
+        if len(found) > 1:
+            found.append({"key": "all", "label": "All", "note": ""})
+        return found
+
+    def available(self) -> list[Agent]:
+        if self.explicit_root:
+            return [self.agent]
+        installed = agent_registry.installed_agents()
+        return installed or [self.agent]
+
+    def _scan(self, days: float, which: str) -> list[revenant.Session]:
+        """Scan back `days` for one agent or all of them, reusing a recent scan."""
         now = time.monotonic()
+        key = (days, which)
         with self._lock:
             cached = self._cache
-        if cached and cached[0] == days and now - cached[1] < self.CACHE_SECONDS:
+        if cached and cached[0] == key and now - cached[1] < self.CACHE_SECONDS:
             return cached[2]
+
         since = datetime.now(timezone.utc) - timedelta(days=max(days, 1 / 24))
-        found = revenant.scan_sessions(self.root, since=since, agent=self.agent)
+        if which == "all" and not self.explicit_root:
+            found = revenant.scan_all(since=since, agents=self.available())
+        else:
+            agent = next((a for a in self.available() if a.key == which), self.agent)
+            root = self.root if (self.explicit_root or agent is self.agent) else agent.config_dir()
+            found = revenant.scan_sessions(root, since=since, agent=agent)
         with self._lock:
-            self._cache = (days, time.monotonic(), found)
+            self._cache = (key, time.monotonic(), found)
         return found
 
     def invalidate(self) -> None:
         with self._lock:
             self._cache = None
 
-    def sessions(self, *, days: float, include_live: bool = True) -> dict:
-        if not self.root.is_dir():
+    def sessions(self, *, days: float, which: str = "", include_live: bool = True) -> dict:
+        which = which or self.agent.key
+        choices = self.choices()
+        if which not in {c["key"] for c in choices}:
+            which = choices[0]["key"] if choices else self.agent.key
+
+        if which != "all" and not self.root.is_dir() and self.explicit_root:
             return {
                 "error": f"{self.agent.label} config directory not found: {self.root}",
                 "sessions": [],
-                "agent": self.agent.label,
+                "agents": choices,
+                "agent": which,
             }
-        found = self._scan(days)
+
+        found = self._scan(days, which)
         selected = revenant.filter_sessions(found, include_live=include_live, limit=None)
+        where = "several places" if which == "all" else str(
+            next((a.config_dir() for a in self.available() if a.key == which), self.root)
+        )
         return {
             "sessions": [revenant.session_to_dict(s) for s in selected],
-            "agent": self.agent.label,
-            "root": str(self.root),
+            "agents": choices,
+            "agent": which,
+            "root": where,
             "error": None,
         }
 
-    def _by_id(self, ids: list[str], *, days: float) -> list[revenant.Session]:
+    def _by_id(self, ids: list[str], *, days: float, which: str = "") -> list[revenant.Session]:
         if not ids:
             return []
-        by_id = {s.session_id: s for s in self._scan(days)}
+        by_id = {s.session_id: s for s in self._scan(days, which or self.agent.key)}
         return [by_id[i] for i in ids if i in by_id]
 
     # -- actions ---------------------------------------------------------- #
 
-    def revive(self, ids: list[str], *, days: float) -> dict:
-        chosen = self._by_id(ids, days=days)
+    def revive(self, ids: list[str], *, days: float, which: str = "") -> dict:
+        chosen = self._by_id(ids, days=days, which=which)
         if not chosen:
             return {"ok": False, "message": "Those sessions are no longer on disk.", "count": 0}
 
@@ -136,14 +172,14 @@ class Backend:
         sink = io.StringIO()
         code = revenant.launch(chosen, stream=sink)
         self.invalidate()  # a revived session becomes live as soon as it registers
-        note = sink.getvalue().strip().splitlines()
-        message = note[-1] if note else ""
+        note = [line for line in sink.getvalue().strip().splitlines() if line]
+        message = " ".join(note[-2:]) if note else ""
         if running:
-            message += f" ({len(running)} still-running session(s) skipped)"
-        return {"ok": code == 0, "count": len(chosen) if code == 0 else 0, "message": message}
+            message += f" {len(running)} held back."
+        return {"ok": code == 0, "count": len(chosen) if code == 0 else 0, "message": message.strip()}
 
-    def commands(self, ids: list[str], *, days: float) -> dict:
-        chosen = [s for s in self._by_id(ids, days=days)]
+    def commands(self, ids: list[str], *, days: float, which: str = "") -> dict:
+        chosen = self._by_id(ids, days=days, which=which)
         return {"text": revenant.render_commands(chosen, shell="pwsh"), "count": len(chosen)}
 
     def reveal(self, path: str) -> dict:
@@ -272,7 +308,8 @@ class Handler(BaseHTTPRequestHandler):
         self.backend.touch()
         if parsed.path == "/api/sessions":
             days = _as_float(query.get("days", ["7"])[0], 7.0)
-            self._json(self.backend.sessions(days=days))
+            which = (query.get("agent") or [""])[0][:40]
+            self._json(self.backend.sessions(days=days, which=which))
             return
         if parsed.path == "/api/ping":
             self._json({"ok": True})
@@ -293,11 +330,12 @@ class Handler(BaseHTTPRequestHandler):
         payload = self._read_json()
         ids = [str(i) for i in payload.get("ids", [])][:200]
         days = _as_float(payload.get("days", 7), 7.0)
+        which = str(payload.get("agent", ""))[:40]
 
         if parsed.path == "/api/revive":
-            self._json(self.backend.revive(ids, days=days))
+            self._json(self.backend.revive(ids, days=days, which=which))
         elif parsed.path == "/api/commands":
-            self._json(self.backend.commands(ids, days=days))
+            self._json(self.backend.commands(ids, days=days, which=which))
         elif parsed.path == "/api/reveal":
             self._json(self.backend.reveal(str(payload.get("path", ""))))
         elif parsed.path == "/api/quit":
@@ -335,15 +373,24 @@ def serve(backend: Backend) -> tuple[ThreadingHTTPServer, str]:
 
 
 def _browser_binary() -> str | None:
-    candidates = [
-        shutil.which("chrome"),
-        shutil.which("msedge"),
+    """A Chromium that can host a chromeless window, when pywebview is missing."""
+    named = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser",
+             "chrome", "microsoft-edge", "msedge", "brave-browser"]
+    paths = [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        str(Path.home() / "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
     ]
-    return next((c for c in candidates if c and Path(c).exists()), None)
+    for name in named:
+        found = shutil.which(name)
+        if found:
+            return found
+    return next((p for p in paths if Path(p).exists()), None)
 
 
 def run_gui(*, agent: Agent = CLAUDE_CODE, root: str | None = None) -> int:

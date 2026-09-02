@@ -100,7 +100,7 @@ def build_card() -> None:
 
 def build_infographic() -> None:
     print("infographic")
-    shoot((HERE / "infographic.html").as_uri(), ASSETS / "how-it-works.png", (1200, 600))
+    shoot((HERE / "infographic.html").as_uri(), ASSETS / "how-it-works.png", (1200, 620))
 
 
 def build_gif() -> None:
@@ -109,8 +109,6 @@ def build_gif() -> None:
     Runs against a synthetic config directory, never against `~/.claude` - the images
     in this repo must not carry anyone's real paths or prompts.
     """
-    import dataclasses
-
     from PIL import Image
 
     sys.path.insert(0, str(ROOT))
@@ -129,9 +127,8 @@ def build_gif() -> None:
     try:
         with tempfile.TemporaryDirectory() as tmp:
             root = demo_fixture.build(Path(tmp) / "config", [p.pid for p in stand_ins])
-            agent = dataclasses.replace(
-                revenant.CLAUDE_CODE,
-                process_images=revenant.CLAUDE_CODE.process_images | {"python.exe", "python", "python3"},
+            agent = revenant.CLAUDE_CODE.variant(
+                process_images=revenant.CLAUDE_CODE.process_images | {"python.exe", "python", "python3"}
             )
             backend = revenant_gui.Backend(agent=agent, root=str(root))
             server, url = revenant_gui.serve(backend)

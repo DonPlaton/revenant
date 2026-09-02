@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: oklch(0.70 0.14 45); } a:hover { color: oklch(0.78 0.15 45); }
+  </style>
+</helmet>
+
+<div style="width: 1000px; height: 720px; background: oklch(0.18 0.008 60); color: oklch(0.93 0.012 80); font-family: 'IBM Plex Mono', Consolas, monospace; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+  <div style="position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 70% at 12% -10%, oklch(0.70 0.14 45 / 0.10), transparent 62%);"></div>
+
+  <div style="position: relative; display: flex; align-items: center; gap: 20px; padding: 0 18px 0 22px; height: 40px; border-bottom: 1px solid oklch(0.30 0.010 60);">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span style="font-family: Spectral, Georgia, serif; font-size: 15px; letter-spacing: 0.34em;">REVENANT</span>
+      <span style="font-size: 10px; letter-spacing: 0.14em; color: oklch(0.50 0.012 80);">v1.1</span>
+    </div>
+    <div style="display: flex; gap: 18px; flex-grow: 1;">
+      <span style="font-size: 11px; letter-spacing: 0.1em; color: oklch(0.50 0.012 80); padding-bottom: 2px;">CLAUDE CODE</span>
+      <span style="font-size: 11px; letter-spacing: 0.1em; color: oklch(0.50 0.012 80); padding-bottom: 2px;">CODEX</span>
+      <span style="font-size: 11px; letter-spacing: 0.1em; color: oklch(0.93 0.012 80); border-bottom: 1px solid oklch(0.70 0.14 45); padding-bottom: 2px;">ALL</span>
+    </div>
+    <div style="display: flex; gap: 14px; color: oklch(0.50 0.012 80);">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1 5.5h9" stroke="currentColor" stroke-width="1"/></svg>
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" stroke-width="1"/></svg>
+    </div>
+  </div>
+
+  <div style="position: relative; padding: 26px 40px 0 40px;">
+    <div style="font-size: 10px; letter-spacing: 0.24em; color: oklch(0.50 0.012 80); margin-bottom: 12px;">TWO AGENTS, ONE REGISTER</div>
+    <div style="font-family: Spectral, Georgia, serif; font-size: 31px; line-height: 1.15;">Fourteen sessions outlived their terminals.</div>
+  </div>
+
+  <div style="position: relative; flex-grow: 1; margin: 30px 40px 0 40px; border-top: 1px solid oklch(0.30 0.010 60); overflow: hidden;">
+    <div style="position: absolute; left: 74px; top: 0; bottom: 0; width: 1px; background: oklch(0.30 0.010 60);"></div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px 96px minmax(0, 1fr) 52px; align-items: start; padding: 13px 0 14px 0; border-bottom: 1px solid oklch(0.24 0.008 60); background: linear-gradient(90deg, oklch(0.70 0.14 45 / 0.07), transparent 45%);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">18m</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; background: oklch(0.70 0.14 45);"></div></div>
+      <div style="padding-left: 16px; font-size: 9.5px; letter-spacing: 0.18em; color: oklch(0.50 0.012 80); padding-top: 3px;">CLAUDE</div>
+      <div>
+        <div style="font-size: 14px; font-weight: 500;">payments-api</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13px; color: oklch(0.70 0.012 80); margin-top: 5px;">the retry path double-charges on a gateway timeout</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">24</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px 96px minmax(0, 1fr) 52px; align-items: start; padding: 13px 0 14px 0; border-bottom: 1px solid oklch(0.24 0.008 60); background: linear-gradient(90deg, oklch(0.70 0.14 45 / 0.07), transparent 45%);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">52m</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; background: oklch(0.70 0.14 45);"></div></div>
+      <div style="padding-left: 16px; font-size: 9.5px; letter-spacing: 0.18em; color: oklch(0.72 0.09 200); padding-top: 3px;">CODEX</div>
+      <div>
+        <div style="font-size: 14px; font-weight: 500;">infra</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13px; color: oklch(0.70 0.012 80); margin-top: 5px;">cut the nightly build from fourteen minutes to under five</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">17</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px 96px minmax(0, 1fr) 52px; align-items: start; padding: 13px 0 14px 0; border-bottom: 1px solid oklch(0.24 0.008 60);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">3h</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; border: 1px solid oklch(0.50 0.012 80);"></div></div>
+      <div style="padding-left: 16px; font-size: 9.5px; letter-spacing: 0.18em; color: oklch(0.72 0.09 200); padding-top: 3px;">CODEX</div>
+      <div>
+        <div style="font-size: 14px; font-weight: 500;">scraper</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13px; color: oklch(0.70 0.012 80); margin-top: 5px;">rate limiting broke when they moved to cursor pagination</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">22</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px 96px minmax(0, 1fr) 52px; align-items: start; padding: 13px 0 14px 0; border-bottom: 1px solid oklch(0.24 0.008 60); opacity: 0.55;">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.50 0.012 80);">now</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;">
+        <div style="width: 9px; height: 9px; border: 1px solid oklch(0.62 0.05 130); background: repeating-linear-gradient(45deg, oklch(0.62 0.05 130) 0 1px, transparent 1px 3px);"></div>
+      </div>
+      <div style="padding-left: 16px; font-size: 9.5px; letter-spacing: 0.18em; color: oklch(0.72 0.09 200); padding-top: 3px;">CODEX</div>
+      <div>
+        <div style="display: flex; align-items: baseline; gap: 12px;">
+          <span style="font-size: 14px; font-weight: 500;">ml-pipeline</span>
+          <span style="font-size: 9.5px; letter-spacing: 0.2em; color: oklch(0.62 0.05 130);">HELD, TOUCHED A MINUTE AGO</span>
+        </div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">9</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px 96px minmax(0, 1fr) 52px; align-items: start; padding: 13px 0 14px 0; border-bottom: 1px solid oklch(0.24 0.008 60);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">6h</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; border: 1px solid oklch(0.50 0.012 80);"></div></div>
+      <div style="padding-left: 16px; font-size: 9.5px; letter-spacing: 0.18em; color: oklch(0.50 0.012 80); padding-top: 3px;">CLAUDE</div>
+      <div>
+        <div style="font-size: 14px; font-weight: 500;">docs-site</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13px; color: oklch(0.70 0.012 80); margin-top: 5px;">rewrite the quickstart so it works on a clean machine</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">15</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px 96px minmax(0, 1fr) 52px; align-items: start; padding: 13px 0 14px 0;">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">1d</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;"><div style="width: 9px; height: 9px; border: 1px solid oklch(0.50 0.012 80);"></div></div>
+      <div style="padding-left: 16px; font-size: 9.5px; letter-spacing: 0.18em; color: oklch(0.50 0.012 80); padding-top: 3px;">CLAUDE</div>
+      <div>
+        <div style="font-size: 14px; font-weight: 500;">analytics</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13px; color: oklch(0.70 0.012 80); margin-top: 5px;">the weekly report double-counts refunds</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">11</div>
+    </div>
+  </div>
+
+  <div style="position: relative; display: flex; align-items: center; gap: 26px; padding: 16px 40px 20px 40px; border-top: 1px solid oklch(0.30 0.010 60);">
+    <div style="flex-grow: 1; font-size: 12px; color: oklch(0.70 0.012 80);">
+      <span style="color: oklch(0.93 0.012 80);">Two</span> of thirteen marked. Each opens with its own agent.
+    </div>
+    <span style="font-size: 11.5px; color: oklch(0.70 0.012 80); border-bottom: 1px solid oklch(0.30 0.010 60); padding-bottom: 1px;">mark all</span>
+    <div style="background: oklch(0.70 0.14 45); color: oklch(0.18 0.008 60); padding: 11px 26px; font-size: 12px; letter-spacing: 0.26em; font-weight: 500;">REVIVE 2</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
