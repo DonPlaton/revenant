@@ -613,8 +613,11 @@ def test_cli_missing_root(tmp_path: Path, capsys: pytest.CaptureFixture[str]) ->
 
 
 def test_cli_dry_run_launch(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The commands are printed, not run, whichever terminal this machine picks."""
     assert revenant.main(["--root", str(root), "--since", "7d", "--launch", "--dry-run"]) == 0
-    assert "wt.exe" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "claude --resume 11111111-1111-1111-1111-111111111111" in out
+    assert "D:" in out, "the working directory travels with the command"
 
 
 def test_cli_rejects_unknown_agent(root: Path) -> None:
