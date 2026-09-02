@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Revenant — social card</title>
+<style>
+  :root{
+    --bg:#1a1917; --surface:#232120; --surface-2:#2b2926; --line:#34312d;
+    --ink:#f2efe7; --dim:#a8a29a; --faint:#6f6a62; --accent:#d97757; --accent-hi:#e88f6f;
+    --mono:"JetBrains Mono","Cascadia Code","Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{width:1280px;height:640px;background:var(--bg);color:var(--ink);
+       font-family:var(--mono);overflow:hidden;position:relative}
+  body::before{content:"";position:absolute;inset:-20%;
+    background:radial-gradient(42% 46% at 24% 6%, rgba(217,119,87,.20), transparent 66%)}
+  body::after{content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px)}
+
+  .wrap{position:relative;z-index:1;height:100%;display:grid;grid-template-columns:1fr 480px;
+        gap:56px;padding:64px 64px 56px}
+
+  .mark{display:flex;align-items:center;gap:18px;margin-bottom:36px}
+  .mark svg{width:62px;height:62px}
+  .word{font-size:34px;letter-spacing:.26em;font-weight:500}
+
+  h1{font-size:52px;line-height:1.1;font-weight:500;letter-spacing:-.02em;max-width:17ch}
+  h1 em{font-style:normal;color:var(--accent)}
+  .lede{margin-top:22px;font-size:17px;line-height:1.65;color:var(--dim);max-width:44ch}
+  .chips{display:flex;gap:10px;margin-top:auto}
+  .note{margin-top:14px;font-size:12.5px;color:var(--faint)}
+  .chip{font-size:13px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 14px}
+  .chip b{color:var(--accent);font-weight:500}
+
+  .left{display:flex;flex-direction:column}
+
+  /* mini app */
+  .app{align-self:center;width:100%;background:var(--surface);border:1px solid var(--line);
+       border-radius:16px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+  .bar{height:34px;display:flex;align-items:center;gap:7px;padding:0 14px;
+       border-bottom:1px solid var(--line);background:#201e1c}
+  .bar i{width:9px;height:9px;border-radius:50%;background:#3a3733;display:block}
+  .bar i:first-child{background:var(--accent)}
+  .pane{padding:20px}
+  .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+  .row span:first-child{font-size:11px;letter-spacing:.16em;color:var(--faint)}
+  .row span:last-child{font-size:15px}
+  .row em{font-style:normal;color:var(--accent)}
+  .rail{height:3px;border-radius:999px;background:#332f2b;position:relative;margin-bottom:8px}
+  .rail::after{content:"";position:absolute;left:0;top:0;height:3px;width:58%;border-radius:999px;
+    background:linear-gradient(90deg,var(--accent),var(--accent-hi));box-shadow:0 0 12px rgba(217,119,87,.5)}
+  .knob{position:absolute;left:58%;top:-6px;width:15px;height:15px;margin-left:-7px;border-radius:50%;
+    background:var(--ink);border:3px solid var(--accent)}
+  .scale{display:flex;justify-content:space-between;font-size:10px;color:var(--faint);margin-bottom:20px}
+
+  .card{display:grid;grid-template-columns:18px 1fr auto;gap:12px;align-items:center;
+        padding:11px 14px;border-radius:10px;border:1px solid var(--line);
+        background:#262422;margin-bottom:8px}
+  .card.on{border-color:rgba(217,119,87,.4);background:linear-gradient(180deg,rgba(217,119,87,.11),transparent),#262422}
+  .tick{width:16px;height:16px;border-radius:5px;background:var(--accent);display:grid;place-items:center}
+  .tick svg{width:9px;height:9px;color:#1a1917}
+  .card.off .tick{background:none;border:1.5px dashed #4a4642}
+  .nm{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pt{font-size:10.5px;color:var(--faint);margin-top:2px}
+  .ag{font-size:11px;color:var(--faint);text-align:right;white-space:nowrap}
+  .live{font-size:8.5px;letter-spacing:.1em;color:#83b06b;background:rgba(131,176,107,.15);
+        border-radius:999px;padding:2px 6px;margin-left:7px}
+
+  .cta{margin-top:16px;display:flex;align-items:center;justify-content:space-between}
+  .cta small{font-size:11px;color:var(--faint)}
+  .btn{background:var(--accent);color:#1a1917;border-radius:999px;padding:10px 24px;
+       font-size:12.5px;letter-spacing:.14em;box-shadow:0 8px 26px rgba(217,119,87,.35)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="left">
+    <div class="mark">
+      <svg viewBox="0 0 256 256" fill="none">
+        <path d="M128 46c-33 0-56 25-56 58v76l18-15 17 15 21-20 21 20 17-15 18 15v-76c0-33-23-58-56-58Z" fill="#d97757"/>
+        <circle cx="106" cy="106" r="11.5" fill="#1a1917"/><circle cx="150" cy="106" r="11.5" fill="#1a1917"/>
+      </svg>
+      <span class="word">REVENANT</span>
+    </div>
+
+    <h1>Bring your agent sessions <em>back from the dead</em>.</h1>
+    <p class="lede">Your machine crashed with nine Claude Code sessions open. Pick a time
+      window, hit REVIVE, and every one of them reopens in its own terminal tab — in the right
+      directory, resumed at the right conversation.</p>
+
+    <div class="chips">
+      <span class="chip"><b>Windows</b> desktop app</span>
+      <span class="chip">CLI everywhere</span>
+      <span class="chip">zero dependencies</span>
+    </div>
+    <p class="note">Never touches a session that is still running.</p>
+  </div>
+
+  <div class="app">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <div class="pane">
+      <div class="row"><span>ACTIVE WITHIN</span><span>the last <em>7 days</em></span></div>
+      <div class="rail"><span class="knob"></span></div>
+      <div class="scale"><span>6h</span><span>1d</span><span>3d</span><span>7d</span><span>14d</span><span>30d</span></div>
+
+      <div class="card on">
+        <span class="tick"><svg viewBox="0 0 10 10" fill="none"><path d="M1.5 5.2 4 7.6 8.6 2.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span><div class="nm">payments-api</div><div class="pt">C:\dev\payments-api</div></span>
+        <span class="ag">31m<br>11 turns</span>
+      </div>
+      <div class="card on">
+        <span class="tick"><svg viewBox="0 0 10 10" fill="none"><path d="M1.5 5.2 4 7.6 8.6 2.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span><div class="nm">checkout-web</div><div class="pt">C:\dev\checkout-web</div></span>
+        <span class="ag">2h<br>20 turns</span>
+      </div>
+      <div class="card off">
+        <span class="tick"></span>
+        <span><div class="nm">ml-pipeline<span class="live">RUNNING</span></div><div class="pt">C:\dev\ml-pipeline</div></span>
+        <span class="ag">12s<br>12 turns</span>
+      </div>
+
+      <div class="cta">
+        <small>2 of 2 selected</small>
+        <span class="btn">REVIVE 2</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
