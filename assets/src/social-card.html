@@ -2,127 +2,137 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Revenant — social card</title>
+<title>Revenant social card</title>
 <style>
   :root{
-    --bg:#1a1917; --surface:#232120; --surface-2:#2b2926; --line:#34312d;
-    --ink:#f2efe7; --dim:#a8a29a; --faint:#6f6a62; --accent:#d97757; --accent-hi:#e88f6f;
-    --mono:"JetBrains Mono","Cascadia Code","Cascadia Mono",Consolas,monospace;
+    --bg:#1c1a18; --ink:#eeeae1; --ink-2:#a9a297; --ink-3:#7a746b;
+    --rule:#35322d; --rule-soft:#282521;
+    --ember:#dd7b52; --held:#8aa878;
+    --mono:"Cascadia Mono","SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{width:1280px;height:640px;background:var(--bg);color:var(--ink);
-       font-family:var(--mono);overflow:hidden;position:relative}
-  body::before{content:"";position:absolute;inset:-20%;
-    background:radial-gradient(42% 46% at 24% 6%, rgba(217,119,87,.20), transparent 66%)}
-  body::after{content:"";position:absolute;inset:0;
-    background:repeating-linear-gradient(0deg,rgba(255,255,255,.014) 0 1px,transparent 1px 3px)}
+  body{width:1280px;height:640px;background:var(--bg);color:var(--ink);font-family:var(--mono);
+       overflow:hidden;position:relative}
+  body::before{content:"";position:absolute;inset:0;
+    background:radial-gradient(90% 60% at 16% -10%, rgba(221,123,82,.17), transparent 62%)}
 
-  .wrap{position:relative;z-index:1;height:100%;display:grid;grid-template-columns:1fr 480px;
-        gap:56px;padding:64px 64px 56px}
-
-  .mark{display:flex;align-items:center;gap:18px;margin-bottom:36px}
-  .mark svg{width:62px;height:62px}
-  .word{font-size:34px;letter-spacing:.26em;font-weight:500}
-
-  h1{font-size:52px;line-height:1.1;font-weight:500;letter-spacing:-.02em;max-width:17ch}
-  h1 em{font-style:normal;color:var(--accent)}
-  .lede{margin-top:22px;font-size:17px;line-height:1.65;color:var(--dim);max-width:44ch}
-  .chips{display:flex;gap:10px;margin-top:auto}
-  .note{margin-top:14px;font-size:12.5px;color:var(--faint)}
-  .chip{font-size:13px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 14px}
-  .chip b{color:var(--accent);font-weight:500}
-
+  .wrap{position:relative;height:100%;display:grid;grid-template-columns:1fr 500px;gap:52px;
+        padding:56px 56px 48px}
   .left{display:flex;flex-direction:column}
 
-  /* mini app */
-  .app{align-self:center;width:100%;background:var(--surface);border:1px solid var(--line);
-       border-radius:16px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.55)}
-  .bar{height:34px;display:flex;align-items:center;gap:7px;padding:0 14px;
-       border-bottom:1px solid var(--line);background:#201e1c}
-  .bar i{width:9px;height:9px;border-radius:50%;background:#3a3733;display:block}
-  .bar i:first-child{background:var(--accent)}
-  .pane{padding:20px}
-  .row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
-  .row span:first-child{font-size:11px;letter-spacing:.16em;color:var(--faint)}
-  .row span:last-child{font-size:15px}
-  .row em{font-style:normal;color:var(--accent)}
-  .rail{height:3px;border-radius:999px;background:#332f2b;position:relative;margin-bottom:8px}
-  .rail::after{content:"";position:absolute;left:0;top:0;height:3px;width:58%;border-radius:999px;
-    background:linear-gradient(90deg,var(--accent),var(--accent-hi));box-shadow:0 0 12px rgba(217,119,87,.5)}
-  .knob{position:absolute;left:58%;top:-6px;width:15px;height:15px;margin-left:-7px;border-radius:50%;
-    background:var(--ink);border:3px solid var(--accent)}
-  .scale{display:flex;justify-content:space-between;font-size:10px;color:var(--faint);margin-bottom:20px}
+  .mark{font-family:var(--serif);font-size:22px;letter-spacing:.42em;margin-bottom:38px}
+  h1{font-family:var(--serif);font-size:52px;line-height:1.08;font-weight:400;letter-spacing:-.01em;
+     max-width:15ch}
+  h1 em{font-style:normal;color:var(--ember)}
+  .lede{margin-top:22px;font-size:14.5px;line-height:1.75;color:var(--ink-2);max-width:47ch}
+  .facts{margin-top:auto;display:flex;gap:30px;font-size:11px;color:var(--ink-3);line-height:1.6}
+  .facts b{display:block;font-family:var(--serif);font-size:17px;color:var(--ink);font-weight:400;
+           margin-bottom:6px;letter-spacing:0}
 
-  .card{display:grid;grid-template-columns:18px 1fr auto;gap:12px;align-items:center;
-        padding:11px 14px;border-radius:10px;border:1px solid var(--line);
-        background:#262422;margin-bottom:8px}
-  .card.on{border-color:rgba(217,119,87,.4);background:linear-gradient(180deg,rgba(217,119,87,.11),transparent),#262422}
-  .tick{width:16px;height:16px;border-radius:5px;background:var(--accent);display:grid;place-items:center}
-  .tick svg{width:9px;height:9px;color:#1a1917}
-  .card.off .tick{background:none;border:1.5px dashed #4a4642}
-  .nm{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .pt{font-size:10.5px;color:var(--faint);margin-top:2px}
-  .ag{font-size:11px;color:var(--faint);text-align:right;white-space:nowrap}
-  .live{font-size:8.5px;letter-spacing:.1em;color:#83b06b;background:rgba(131,176,107,.15);
-        border-radius:999px;padding:2px 6px;margin-left:7px}
+  .app{align-self:center;width:100%;border:1px solid var(--rule);background:#201e1b;
+       box-shadow:0 26px 70px rgba(0,0,0,.55)}
+  .bar{height:30px;display:flex;align-items:center;gap:16px;padding:0 14px;
+       border-bottom:1px solid var(--rule)}
+  .bar .w{font-family:var(--serif);font-size:10px;letter-spacing:.34em;color:var(--ink-2)}
+  .bar .t{font-size:8.5px;letter-spacing:.1em;color:var(--ink-3)}
+  .bar .t.on{color:var(--ink);border-bottom:1px solid var(--ember);padding-bottom:2px}
+  .pane{padding:18px}
+  .ruler{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+  .ruler span:first-child{font-size:8.5px;letter-spacing:.2em;color:var(--ink-3)}
+  .ruler em{font-style:normal;font-family:var(--serif);font-size:13px}
+  .track{position:relative;height:16px;margin-bottom:4px}
+  .track .l{position:absolute;left:0;right:0;top:7px;height:1px;background:var(--rule)}
+  .track .f{position:absolute;left:0;width:50%;top:7px;height:1px;background:var(--ember)}
+  .track .c{position:absolute;left:50%;top:1px;width:2px;height:14px;background:var(--ember)}
+  .track .k{position:absolute;top:3px;width:1px;height:8px;background:var(--rule)}
+  .scale{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));font-size:8px;color:var(--ink-3);
+         margin-bottom:14px}
 
-  .cta{margin-top:16px;display:flex;align-items:center;justify-content:space-between}
-  .cta small{font-size:11px;color:var(--faint)}
-  .btn{background:var(--accent);color:#1a1917;border-radius:999px;padding:10px 24px;
-       font-size:12.5px;letter-spacing:.14em;box-shadow:0 8px 26px rgba(217,119,87,.35)}
+  .reg{position:relative;border-top:1px solid var(--rule)}
+  .reg .axis{position:absolute;left:52px;top:0;bottom:0;width:1px;background:var(--rule)}
+  .r{display:grid;grid-template-columns:44px 20px minmax(0,1fr) 30px;align-items:start;
+     padding:9px 0 10px;border-bottom:1px solid var(--rule-soft)}
+  .r.on{background:linear-gradient(90deg,rgba(221,123,82,.10),transparent 45%)}
+  .r .a{text-align:right;padding-right:10px;font-size:9px;color:var(--ink-2)}
+  .r .m{display:flex;justify-content:center;padding-top:2px}
+  .r .m i{width:7px;height:7px;border:1px solid var(--ink-3);display:block}
+  .r.on .m i{background:var(--ember);border-color:var(--ember)}
+  .r.held{opacity:.5}
+  .r.held .m i{border-color:var(--held);
+    background:repeating-linear-gradient(45deg,var(--held) 0 1px,transparent 1px 3px)}
+  .r .b{padding-left:12px;min-width:0}
+  .r .n{font-size:11px;font-weight:500}
+  .r .p{display:block;font-size:8.5px;color:var(--ink-3);margin-top:2px}
+  .r .s{display:block;font-family:var(--serif);font-style:italic;font-size:10.5px;color:var(--ink-2);
+        margin-top:4px}
+  .r .flag{font-size:7.5px;letter-spacing:.16em;color:var(--held);margin-left:8px}
+  .r .t{text-align:right;font-size:9px;color:var(--ink-3)}
+
+  .cta{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+  .cta small{font-size:9.5px;color:var(--ink-3)}
+  .btn{background:var(--ember);color:#1c1a18;padding:8px 20px;font-size:10px;letter-spacing:.26em;
+       font-weight:500}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="left">
-    <div class="mark">
-      <svg viewBox="0 0 256 256" fill="none">
-        <path d="M128 46c-33 0-56 25-56 58v76l18-15 17 15 21-20 21 20 17-15 18 15v-76c0-33-23-58-56-58Z" fill="#d97757"/>
-        <circle cx="106" cy="106" r="11.5" fill="#1a1917"/><circle cx="150" cy="106" r="11.5" fill="#1a1917"/>
-      </svg>
-      <span class="word">REVENANT</span>
-    </div>
-
+    <div class="mark">REVENANT</div>
     <h1>Bring your agent sessions <em>back from the dead</em>.</h1>
-    <p class="lede">Your machine crashed with nine Claude Code sessions open. Pick a time
-      window, hit REVIVE, and every one of them reopens in its own terminal tab — in the right
-      directory, resumed at the right conversation.</p>
-
-    <div class="chips">
-      <span class="chip"><b>Windows</b> desktop app</span>
-      <span class="chip">CLI everywhere</span>
-      <span class="chip">zero dependencies</span>
+    <p class="lede">Your machine went down with nine Claude Code and Codex sessions open. Pick how
+      far back to look, mark the ones you want, and each reopens in its own terminal tab, in the
+      right directory, resumed at the right conversation.</p>
+    <div class="facts">
+      <span><b>Windows, macOS, Linux</b>Windows Terminal, iTerm2,<br>tmux and nine more</span>
+      <span><b>No dependencies</b>the command line is one<br>stdlib Python file</span>
+      <span><b>Read only</b>a session that is still<br>running is never touched</span>
     </div>
-    <p class="note">Never touches a session that is still running.</p>
   </div>
 
   <div class="app">
-    <div class="bar"><i></i><i></i><i></i></div>
+    <div class="bar">
+      <span class="w">REVENANT</span>
+      <span class="t on">CLAUDE CODE</span><span class="t">CODEX</span><span class="t">ALL</span>
+    </div>
     <div class="pane">
-      <div class="row"><span>ACTIVE WITHIN</span><span>the last <em>7 days</em></span></div>
-      <div class="rail"><span class="knob"></span></div>
-      <div class="scale"><span>6h</span><span>1d</span><span>3d</span><span>7d</span><span>14d</span><span>30d</span></div>
+      <div class="ruler"><span>LOOKING BACK</span><em>seven days</em></div>
+      <div class="track">
+        <span class="l"></span><span class="f"></span>
+        <span class="k" style="left:0"></span><span class="k" style="left:16.6%"></span>
+        <span class="k" style="left:33.3%"></span><span class="k" style="left:50%"></span>
+        <span class="k" style="left:66.6%"></span><span class="k" style="left:83.3%"></span>
+        <span class="k" style="left:99.7%"></span>
+        <span class="c"></span>
+      </div>
+      <div class="scale"><span>6h</span><span>1d</span><span>3d</span>
+        <span style="color:#dd7b52">7d</span><span>14d</span><span>30d</span><span>90d</span></div>
 
-      <div class="card on">
-        <span class="tick"><svg viewBox="0 0 10 10" fill="none"><path d="M1.5 5.2 4 7.6 8.6 2.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <span><div class="nm">payments-api</div><div class="pt">C:\dev\payments-api</div></span>
-        <span class="ag">31m<br>11 turns</span>
-      </div>
-      <div class="card on">
-        <span class="tick"><svg viewBox="0 0 10 10" fill="none"><path d="M1.5 5.2 4 7.6 8.6 2.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-        <span><div class="nm">checkout-web</div><div class="pt">C:\dev\checkout-web</div></span>
-        <span class="ag">2h<br>20 turns</span>
-      </div>
-      <div class="card off">
-        <span class="tick"></span>
-        <span><div class="nm">ml-pipeline<span class="live">RUNNING</span></div><div class="pt">C:\dev\ml-pipeline</div></span>
-        <span class="ag">12s<br>12 turns</span>
+      <div class="reg">
+        <span class="axis"></span>
+        <div class="r on">
+          <span class="a">18m</span><span class="m"><i></i></span>
+          <span class="b"><span class="n">payments-api</span>
+            <span class="p">C:\dev\payments-api</span>
+            <span class="s">the retry path double-charges on a gateway timeout</span></span>
+          <span class="t">24</span>
+        </div>
+        <div class="r on">
+          <span class="a">1h</span><span class="m"><i></i></span>
+          <span class="b"><span class="n">checkout-web</span>
+            <span class="p">C:\dev\checkout-web</span>
+            <span class="s">port the checkout form to the new tokens</span></span>
+          <span class="t">12</span>
+        </div>
+        <div class="r held">
+          <span class="a">now</span><span class="m"><i></i></span>
+          <span class="b"><span class="n">ml-pipeline<span class="flag">HELD, PROCESS 4812</span></span>
+            <span class="p">C:\dev\ml-pipeline</span></span>
+          <span class="t">31</span>
+        </div>
       </div>
 
-      <div class="cta">
-        <small>2 of 2 selected</small>
-        <span class="btn">REVIVE 2</span>
-      </div>
+      <div class="cta"><small>Two of two marked. One held back.</small><span class="btn">REVIVE 2</span></div>
     </div>
   </div>
 </div>

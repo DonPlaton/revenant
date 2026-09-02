@@ -1,0 +1,157 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: oklch(0.70 0.14 45); } a:hover { color: oklch(0.78 0.15 45); }
+  </style>
+</helmet>
+
+<div style="width: 1000px; height: 720px; background: oklch(0.18 0.008 60); color: oklch(0.93 0.012 80); font-family: 'IBM Plex Mono', Consolas, monospace; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+  <div style="position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 70% at 12% -10%, oklch(0.70 0.14 45 / 0.10), transparent 62%);"></div>
+
+  <!-- masthead -->
+  <div style="position: relative; display: flex; align-items: center; gap: 20px; padding: 0 18px 0 22px; height: 40px; border-bottom: 1px solid oklch(0.30 0.010 60);">
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span style="font-family: Spectral, Georgia, serif; font-size: 15px; letter-spacing: 0.34em; color: oklch(0.93 0.012 80);">REVENANT</span>
+      <span style="font-size: 10px; letter-spacing: 0.14em; color: oklch(0.50 0.012 80);">v1.1</span>
+    </div>
+    <div style="display: flex; gap: 18px; flex-grow: 1;">
+      <span style="font-size: 11px; letter-spacing: 0.1em; color: oklch(0.93 0.012 80); border-bottom: 1px solid oklch(0.70 0.14 45); padding-bottom: 2px;">CLAUDE CODE</span>
+      <span style="font-size: 11px; letter-spacing: 0.1em; color: oklch(0.50 0.012 80); padding-bottom: 2px;">CODEX</span>
+      <span style="font-size: 11px; letter-spacing: 0.1em; color: oklch(0.50 0.012 80); padding-bottom: 2px;">ALL</span>
+    </div>
+    <div style="display: flex; gap: 14px; color: oklch(0.50 0.012 80);">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1 5.5h9" stroke="currentColor" stroke-width="1"/></svg>
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" stroke-width="1"/></svg>
+    </div>
+  </div>
+
+  <!-- statement -->
+  <div style="position: relative; padding: 26px 40px 0 40px;">
+    <div style="font-size: 10px; letter-spacing: 0.24em; color: oklch(0.50 0.012 80); margin-bottom: 12px;">REGISTER OF THE UNFINISHED</div>
+    <div style="font-family: Spectral, Georgia, serif; font-size: 31px; line-height: 1.15; letter-spacing: -0.005em;">
+      Nine sessions outlived their terminals.
+    </div>
+  </div>
+
+  <!-- the ruler -->
+  <div style="position: relative; padding: 26px 40px 0 40px;">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 13px;">
+      <span style="font-size: 10px; letter-spacing: 0.2em; color: oklch(0.50 0.012 80);">LOOKING BACK</span>
+      <span style="font-family: Spectral, Georgia, serif; font-size: 16px;">seven days</span>
+    </div>
+    <div style="position: relative; height: 26px;">
+      <div style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: oklch(0.30 0.010 60);"></div>
+      <div style="position: absolute; left: 0; width: 50%; top: 9px; height: 1px; background: oklch(0.70 0.14 45);"></div>
+      <div style="position: absolute; left: 0; right: 0; top: 4px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));">
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+      </div>
+      <div style="position: absolute; left: 50%; top: 0; width: 3px; height: 19px; margin-left: -1px; background: oklch(0.70 0.14 45);"></div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); font-size: 10px; letter-spacing: 0.08em; color: oklch(0.50 0.012 80); margin-top: 2px;">
+      <span>6h</span><span>1d</span><span>3d</span><span style="color: oklch(0.70 0.14 45);">7d</span><span>14d</span><span>30d</span><span>90d</span>
+    </div>
+  </div>
+
+  <!-- the register -->
+  <div style="position: relative; flex-grow: 1; margin: 24px 40px 0 40px; border-top: 1px solid oklch(0.30 0.010 60); overflow: hidden;">
+    <div style="position: absolute; left: 74px; top: 0; bottom: 0; width: 1px; background: oklch(0.30 0.010 60);"></div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 62px; align-items: start; gap: 0; padding: 14px 0 15px 0; border-bottom: 1px solid oklch(0.24 0.008 60); background: linear-gradient(90deg, oklch(0.70 0.14 45 / 0.07), transparent 45%);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">18m</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;">
+        <div style="width: 9px; height: 9px; background: oklch(0.70 0.14 45);"></div>
+      </div>
+      <div style="padding-left: 16px;">
+        <div style="font-size: 14px; font-weight: 500; letter-spacing: 0.01em;">payments-api</div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\payments-api</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13.5px; color: oklch(0.70 0.012 80); margin-top: 7px; text-wrap: pretty;">the retry path double-charges on a gateway timeout, find where</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">24</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 62px; align-items: start; padding: 14px 0 15px 0; border-bottom: 1px solid oklch(0.24 0.008 60); background: linear-gradient(90deg, oklch(0.70 0.14 45 / 0.07), transparent 45%);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">1h</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;">
+        <div style="width: 9px; height: 9px; background: oklch(0.70 0.14 45);"></div>
+      </div>
+      <div style="padding-left: 16px;">
+        <div style="font-size: 14px; font-weight: 500;">checkout-web</div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\checkout-web</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13.5px; color: oklch(0.70 0.012 80); margin-top: 7px;">port the checkout form to the new tokens</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">12</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 62px; align-items: start; padding: 14px 0 15px 0; border-bottom: 1px solid oklch(0.24 0.008 60);">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">4h</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;">
+        <div style="width: 9px; height: 9px; border: 1px solid oklch(0.50 0.012 80);"></div>
+      </div>
+      <div style="padding-left: 16px;">
+        <div style="font-size: 14px; font-weight: 500;">ml-pipeline</div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\ml-pipeline</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13.5px; color: oklch(0.70 0.012 80); margin-top: 7px;">why does the training loop OOM at batch 64 but not 32</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">31</div>
+    </div>
+
+    <!-- held back: hatched mark, struck rule, no dot -->
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 62px; align-items: start; padding: 14px 0 15px 0; border-bottom: 1px solid oklch(0.24 0.008 60); opacity: 0.55;">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.50 0.012 80);">now</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;">
+        <div style="width: 9px; height: 9px; border: 1px solid oklch(0.62 0.05 130); background: repeating-linear-gradient(45deg, oklch(0.62 0.05 130) 0 1px, transparent 1px 3px);"></div>
+      </div>
+      <div style="padding-left: 16px;">
+        <div style="display: flex; align-items: baseline; gap: 12px;">
+          <span style="font-size: 14px; font-weight: 500;">infra</span>
+          <span style="font-size: 9.5px; letter-spacing: 0.2em; color: oklch(0.62 0.05 130);">HELD, STILL RUNNING</span>
+        </div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\infra</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">8</div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 62px 24px minmax(0, 1fr) 62px; align-items: start; padding: 14px 0 15px 0;">
+      <div style="text-align: right; padding-right: 14px; font-size: 11px; color: oklch(0.70 0.012 80);">20h</div>
+      <div style="display: flex; justify-content: center; padding-top: 2px;">
+        <div style="width: 9px; height: 9px; border: 1px solid oklch(0.50 0.012 80);"></div>
+      </div>
+      <div style="padding-left: 16px;">
+        <div style="font-size: 14px; font-weight: 500;">docs-site</div>
+        <div style="font-size: 10.5px; color: oklch(0.50 0.012 80); margin-top: 3px;">C:\dev\docs-site</div>
+        <div style="font-family: Spectral, Georgia, serif; font-style: italic; font-size: 13.5px; color: oklch(0.70 0.012 80); margin-top: 7px;">rewrite the quickstart so it works on a clean machine</div>
+      </div>
+      <div style="text-align: right; font-size: 11px; color: oklch(0.50 0.012 80);">15</div>
+    </div>
+  </div>
+
+  <!-- action bar -->
+  <div style="position: relative; display: flex; align-items: center; gap: 26px; padding: 16px 40px 20px 40px; border-top: 1px solid oklch(0.30 0.010 60);">
+    <div style="flex-grow: 1; font-size: 12px; color: oklch(0.70 0.012 80);">
+      <span style="color: oklch(0.93 0.012 80);">Two</span> of eight marked. One held back.
+    </div>
+    <span style="font-size: 11.5px; color: oklch(0.70 0.012 80); border-bottom: 1px solid oklch(0.30 0.010 60); padding-bottom: 1px;">mark all</span>
+    <span style="font-size: 11.5px; color: oklch(0.70 0.012 80); border-bottom: 1px solid oklch(0.30 0.010 60); padding-bottom: 1px;">copy commands</span>
+    <div style="background: oklch(0.70 0.14 45); color: oklch(0.18 0.008 60); padding: 11px 26px; font-size: 12px; letter-spacing: 0.26em; font-weight: 500;">REVIVE 2</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1000, "h": 720, "title": "Register, sessions found" },
+    { "file": "Revival.dc.html", "x": 1100, "y": 0, "w": 1000, "h": 720, "title": "The moment of revival" },
+    { "file": "Empty.dc.html", "x": 0, "y": 860, "w": 1000, "h": 720, "title": "Empty window" },
+    { "file": "MultiAgent.dc.html", "x": 1100, "y": 860, "w": 1000, "h": 720, "title": "Claude Code and Codex together" },
+    { "file": "AltDense.dc.html", "x": 2200, "y": 0, "w": 1000, "h": 720, "title": "Alternate, dense plot" }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 0, "y": -190, "w": 620, "text": "Register direction. Sessions hang off a time axis instead of sitting in cards. Selection is a filled square on the axis, never a checkbox. A held-back session is hatched and struck, never a pulsing dot. Type is Spectral over IBM Plex Mono: a ledger, not a dashboard." },
+    { "id": "alt-note", "x": 2200, "y": -190, "w": 460, "text": "Alternate: plot every session on a horizontal time axis and drop to one dense line each. Twice the rows visible, but the last prompt no longer fits, and the prompt is what tells you which session is which." }
+  ],
+  "launch": { "view": "canvas" }
+}

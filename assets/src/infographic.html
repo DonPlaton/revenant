@@ -2,84 +2,84 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Revenant — how it works</title>
+<title>How Revenant works</title>
 <style>
   :root{
-    --bg:#1a1917; --surface:#232120; --surface-2:#2b2926; --line:#34312d;
-    --ink:#f2efe7; --dim:#a8a29a; --faint:#6f6a62;
-    --accent:#d97757; --accent-hi:#e88f6f; --live:#83b06b; --dead:#8a5b4b;
-    --mono:"JetBrains Mono","Cascadia Code","Cascadia Mono",Consolas,monospace;
+    --bg:#1c1a18; --ink:#eeeae1; --ink-2:#a9a297; --ink-3:#7a746b;
+    --rule:#35322d; --rule-soft:#282521; --panel:#211f1c;
+    --ember:#dd7b52; --held:#8aa878; --dead:#8a5b4b; --codex:#79a6b8;
+    --mono:"Cascadia Mono","SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{width:1200px;height:600px;background:var(--bg);color:var(--ink);font-family:var(--mono);
-       padding:44px 48px;position:relative;overflow:hidden}
-  body::before{content:"";position:absolute;inset:-25%;
-    background:radial-gradient(40% 44% at 50% -6%, rgba(217,119,87,.13), transparent 68%)}
-  .z{position:relative;z-index:1;height:100%;display:flex;flex-direction:column}
+  body{width:1200px;height:620px;background:var(--bg);color:var(--ink);font-family:var(--mono);
+       padding:40px 44px;position:relative;overflow:hidden}
+  body::before{content:"";position:absolute;inset:0;
+    background:radial-gradient(70% 50% at 50% -12%, rgba(221,123,82,.12), transparent 62%)}
+  .z{position:relative;height:100%;display:flex;flex-direction:column}
 
-  header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:30px}
-  h1{font-size:23px;font-weight:500;letter-spacing:-.01em}
-  h1 em{font-style:normal;color:var(--accent)}
-  header span{font-size:11.5px;letter-spacing:.18em;color:var(--faint)}
+  header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:26px}
+  h1{font-family:var(--serif);font-size:26px;font-weight:400}
+  h1 em{font-style:normal;color:var(--ember)}
+  header span{font-size:10px;letter-spacing:.2em;color:var(--ink-3)}
 
-  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;flex:1}
-  .step{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 20px 22px;
-        position:relative;display:flex;flex-direction:column}
-  .step::after{content:"";position:absolute;right:-16px;top:50%;width:16px;height:1px;background:var(--line)}
-  .step:last-child::after{display:none}
-  .n{font-size:10.5px;letter-spacing:.2em;color:var(--accent);margin-bottom:12px}
-  .step h2{font-size:15px;font-weight:500;line-height:1.35;margin-bottom:9px}
-  .step p{font-size:12px;line-height:1.6;color:var(--dim)}
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--rule);
+        border:1px solid var(--rule);flex:1}
+  .step{background:var(--panel);padding:18px 18px 20px;display:flex;flex-direction:column}
+  .n{font-size:9.5px;letter-spacing:.22em;color:var(--ember);margin-bottom:11px}
+  .step h2{font-family:var(--serif);font-size:17px;font-weight:400;line-height:1.25;margin-bottom:9px}
+  .step p{font-size:11.5px;line-height:1.65;color:var(--ink-2)}
   .art{margin-top:auto;padding-top:16px}
 
-  /* step art */
-  .tabs{display:flex;gap:4px}
-  .tabs i{flex:1;height:26px;border-radius:5px 5px 0 0;background:var(--surface-2);
-          border:1px solid var(--line);border-bottom:0;display:block}
-  .tabs.dead i{background:repeating-linear-gradient(135deg,#241f1d 0 5px,#1d1917 5px 10px);border-color:#453029;border-style:dashed;opacity:.7}
-  .tabs.alive i{background:linear-gradient(180deg,rgba(217,119,87,.22),transparent);border-color:rgba(217,119,87,.42)}
+  .tabs{display:flex;gap:3px}
+  .tabs i{flex:1;height:22px;display:block;border:1px solid var(--rule);border-bottom:0}
+  .tabs.dead i{border-style:dashed;border-color:#4a3229;
+    background:repeating-linear-gradient(135deg,#241f1d 0 4px,#1d1917 4px 8px)}
+  .tabs.alive i{border-color:rgba(221,123,82,.5);
+    background:linear-gradient(180deg,rgba(221,123,82,.2),transparent)}
 
-  .disk{display:flex;flex-direction:column;gap:7px}
-  .file{display:flex;align-items:center;gap:9px;font-size:10.5px;color:var(--dim)}
-  .file i{width:7px;height:7px;border-radius:2px;display:block;flex:0 0 auto}
-  .file.gone{color:var(--faint);text-decoration:line-through}
-  .file.gone i{background:var(--dead)}
-  .file.kept i{background:var(--live)}
+  .files{display:flex;flex-direction:column;gap:8px;font-size:10px;color:var(--ink-2)}
+  .files span{display:flex;align-items:center;gap:9px}
+  .files i{width:7px;height:7px;display:block;flex:0 0 auto}
+  .files .gone{color:var(--ink-3);text-decoration:line-through}
+  .files .gone i{background:var(--dead)}
+  .files .kept i{background:var(--held)}
 
-  .slider{padding-top:6px}
-  .srail{height:3px;border-radius:99px;background:#332f2b;position:relative;margin-bottom:9px}
-  .srail::after{content:"";position:absolute;left:0;height:3px;width:55%;border-radius:99px;
-    background:linear-gradient(90deg,var(--accent),var(--accent-hi));box-shadow:0 0 10px rgba(217,119,87,.5)}
-  .sknob{position:absolute;left:55%;top:-6px;margin-left:-7px;width:15px;height:15px;border-radius:50%;
-    background:var(--ink);border:3px solid var(--accent)}
-  .sscale{display:flex;justify-content:space-between;font-size:9.5px;color:var(--faint)}
+  .mini{position:relative;border-top:1px solid var(--rule)}
+  .mini .axis{position:absolute;left:34px;top:0;bottom:0;width:1px;background:var(--rule)}
+  .mini .row{display:grid;grid-template-columns:28px 18px minmax(0,1fr);align-items:center;
+             padding:6px 0;border-bottom:1px solid var(--rule-soft);font-size:9.5px}
+  .mini .row.on{background:linear-gradient(90deg,rgba(221,123,82,.1),transparent 50%)}
+  .mini .a{text-align:right;padding-right:8px;color:var(--ink-3)}
+  .mini .m{display:flex;justify-content:center}
+  .mini .m i{width:7px;height:7px;border:1px solid var(--ink-3);display:block}
+  .mini .row.on .m i{background:var(--ember);border-color:var(--ember)}
+  .mini .n2{padding-left:10px}
 
-  .btnwrap{display:flex;justify-content:center;padding-top:4px}
-  .btn{background:var(--accent);color:#1a1917;border-radius:99px;padding:9px 22px;font-size:11.5px;
-       letter-spacing:.14em;box-shadow:0 6px 20px rgba(217,119,87,.32)}
+  .btn{display:inline-block;background:var(--ember);color:#1c1a18;padding:7px 18px;font-size:10px;
+       letter-spacing:.24em;font-weight:500;margin-top:12px}
 
-  /* mechanism strip */
-  .mech{border:1px solid var(--line);border-radius:14px;background:#201e1c;
-        display:grid;grid-template-columns:190px 1fr;overflow:hidden}
-  .mech .lbl{padding:18px 20px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:5px;
-             justify-content:center}
-  .mech .lbl b{font-size:12px;font-weight:500;letter-spacing:.08em}
-  .mech .lbl span{font-size:10.5px;color:var(--faint);line-height:1.5}
-  .rows{display:grid;grid-template-columns:repeat(3,1fr)}
-  .cell{padding:16px 20px;border-right:1px solid var(--line)}
+  .strip{margin-top:22px;border:1px solid var(--rule);background:var(--panel);display:grid;
+         grid-template-columns:176px 1fr}
+  .strip .lbl{padding:15px 18px;border-right:1px solid var(--rule);display:flex;flex-direction:column;
+              gap:5px;justify-content:center}
+  .strip .lbl b{font-family:var(--serif);font-size:14px;font-weight:400}
+  .strip .lbl span{font-size:10px;color:var(--ink-3);line-height:1.55}
+  .cells{display:grid;grid-template-columns:repeat(3,1fr)}
+  .cell{padding:14px 18px;border-right:1px solid var(--rule)}
   .cell:last-child{border-right:0}
-  .cell code{font-size:11px;color:var(--ink);display:block;margin-bottom:6px}
-  .cell p{font-size:10.5px;color:var(--dim);line-height:1.55}
-  .tag{display:inline-block;font-size:9px;letter-spacing:.12em;padding:2px 7px;border-radius:99px;margin-top:8px}
-  .tag.no{background:rgba(138,91,75,.22);color:#c98a72}
-  .tag.yes{background:rgba(131,176,107,.16);color:var(--live)}
+  .cell code{display:block;font-size:10px;color:var(--ink);margin-bottom:5px}
+  .cell p{font-size:10px;color:var(--ink-2);line-height:1.6}
+  .tag{display:inline-block;font-size:8px;letter-spacing:.14em;padding:2px 7px;margin-top:8px}
+  .tag.no{background:rgba(138,91,75,.24);color:#c98a72}
+  .tag.yes{background:rgba(138,168,120,.16);color:var(--held)}
 </style>
 </head>
 <body>
 <div class="z">
   <header>
     <h1>How <em>Revenant</em> brings a workspace back</h1>
-    <span>CRASH → REVIVE IN FOUR STEPS</span>
+    <span>FOUR STEPS</span>
   </header>
 
   <div class="flow">
@@ -87,7 +87,7 @@
       <div class="n">01</div>
       <h2>The machine dies</h2>
       <p>Nine agent sessions across nine directories go down with the terminal. Each one holds
-         hours of context.</p>
+         hours of context you would rather not retype.</p>
       <div class="art"><div class="tabs dead"><i></i><i></i><i></i><i></i><i></i></div></div>
     </section>
 
@@ -95,12 +95,12 @@
       <div class="n">02</div>
       <h2>Transcripts outlive the crash</h2>
       <p>The registry of running sessions is wiped on the next start. The conversation files are
-         not — they are the durable record.</p>
+         not, so they are what Revenant reads.</p>
       <div class="art">
-        <div class="disk">
-          <span class="file gone"><i></i>sessions/&lt;pid&gt;.json</span>
-          <span class="file kept"><i></i>projects/&lt;slug&gt;/&lt;id&gt;.jsonl</span>
-          <span class="file kept"><i></i>history.jsonl</span>
+        <div class="files">
+          <span class="gone"><i></i>sessions/&lt;pid&gt;.json</span>
+          <span class="kept"><i></i>projects/&lt;slug&gt;/&lt;id&gt;.jsonl</span>
+          <span class="kept"><i></i>history.jsonl</span>
         </div>
       </div>
     </section>
@@ -108,50 +108,52 @@
     <section class="step">
       <div class="n">03</div>
       <h2>You pick a window</h2>
-      <p>Drag from six hours to ninety days. The list refilters live, newest first, with the last
-         prompt of each session.</p>
+      <p>Drag the caret from six hours to ninety days. Sessions hang off the time axis, newest
+         first, each with the last thing you said to it.</p>
       <div class="art">
-        <div class="slider">
-          <div class="srail"><span class="sknob"></span></div>
-          <div class="sscale"><span>6h</span><span>1d</span><span>7d</span><span>30d</span><span>90d</span></div>
+        <div class="mini">
+          <span class="axis"></span>
+          <div class="row on"><span class="a">18m</span><span class="m"><i></i></span><span class="n2">payments-api</span></div>
+          <div class="row on"><span class="a">1h</span><span class="m"><i></i></span><span class="n2">checkout-web</span></div>
+          <div class="row"><span class="a">4h</span><span class="m"><i></i></span><span class="n2">ml-pipeline</span></div>
         </div>
       </div>
     </section>
 
     <section class="step">
       <div class="n">04</div>
-      <h2>REVIVE</h2>
-      <p>One tab per session, each already <code>cd</code>-ed into its directory and resumed at
-         the right conversation.</p>
+      <h2>Revive</h2>
+      <p>One tab per session in Windows Terminal, iTerm2, GNOME Terminal, tmux or whatever else
+         you use, already in the right folder and resumed.</p>
       <div class="art">
         <div class="tabs alive"><i></i><i></i><i></i><i></i><i></i></div>
-        <div class="btnwrap" style="padding-top:14px"><span class="btn">REVIVE 9</span></div>
+        <span class="btn">REVIVE 9</span>
       </div>
     </section>
   </div>
 
-  <div class="mech">
+  <div class="strip">
     <div class="lbl">
-      <b>WHAT IT READS</b>
-      <span>Three files on disk. Nothing is ever written back.</span>
+      <b>What it reads</b>
+      <span>Three files per agent. Nothing is ever written back.</span>
     </div>
-    <div class="rows">
+    <div class="cells">
       <div class="cell">
-        <code>~/.claude/sessions/*.json</code>
-        <p>One file per running session: pid, directory, name. Cross-checked against the live
-           process table.</p>
+        <code>sessions/*.json</code>
+        <p>One file per running session. Cross-checked against the real process, so a recycled
+           pid cannot pose as a live one.</p>
         <span class="tag no">PRUNED ON STARTUP</span>
       </div>
       <div class="cell">
-        <code>~/.claude/projects/*/*.jsonl</code>
-        <p>The conversations themselves. Directory, branch and version come from the first
-           records of each file.</p>
+        <code>projects/*/*.jsonl</code>
+        <p>The conversations. Directory, branch and version come from the first records of each
+           file. Codex files the same thing by date.</p>
         <span class="tag yes">SURVIVES A CRASH</span>
       </div>
       <div class="cell">
-        <code>~/.claude/history.jsonl</code>
-        <p>Every prompt you typed, with its session id — turn counts and previews without parsing
-           gigabytes.</p>
+        <code>history.jsonl</code>
+        <p>Every prompt you typed, with its session id, which gives turn counts and previews
+           without reading gigabytes.</p>
         <span class="tag yes">SURVIVES A CRASH</span>
       </div>
     </div>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: oklch(0.70 0.14 45); } a:hover { color: oklch(0.78 0.15 45); }
+  </style>
+</helmet>
+
+<div style="width: 1000px; height: 720px; background: oklch(0.18 0.008 60); color: oklch(0.93 0.012 80); font-family: 'IBM Plex Mono', Consolas, monospace; display: flex; flex-direction: column; overflow: hidden; position: relative;">
+
+  <div style="position: relative; display: flex; align-items: center; gap: 20px; padding: 0 18px 0 22px; height: 40px; border-bottom: 1px solid oklch(0.30 0.010 60);">
+    <span style="font-family: Spectral, Georgia, serif; font-size: 15px; letter-spacing: 0.34em;">REVENANT</span>
+    <div style="flex-grow: 1;"></div>
+    <div style="display: flex; gap: 14px; color: oklch(0.50 0.012 80);">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1 5.5h9" stroke="currentColor" stroke-width="1"/></svg>
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1.5 1.5l8 8M9.5 1.5l-8 8" stroke="currentColor" stroke-width="1"/></svg>
+    </div>
+  </div>
+
+  <div style="position: relative; padding: 26px 40px 0 40px;">
+    <div style="font-size: 10px; letter-spacing: 0.24em; color: oklch(0.50 0.012 80); margin-bottom: 12px;">REGISTER OF THE UNFINISHED</div>
+    <div style="font-family: Spectral, Georgia, serif; font-size: 31px; line-height: 1.15;">Nothing in the last six hours.</div>
+  </div>
+
+  <div style="position: relative; padding: 26px 40px 0 40px;">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 13px;">
+      <span style="font-size: 10px; letter-spacing: 0.2em; color: oklch(0.50 0.012 80);">LOOKING BACK</span>
+      <span style="font-family: Spectral, Georgia, serif; font-size: 16px;">six hours</span>
+    </div>
+    <div style="position: relative; height: 26px;">
+      <div style="position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: oklch(0.30 0.010 60);"></div>
+      <div style="position: absolute; left: 0; right: 0; top: 4px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));">
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+        <div style="height: 11px; border-left: 1px solid oklch(0.30 0.010 60);"></div>
+      </div>
+      <div style="position: absolute; left: 0; top: 0; width: 3px; height: 19px; background: oklch(0.70 0.14 45);"></div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); font-size: 10px; letter-spacing: 0.08em; color: oklch(0.50 0.012 80); margin-top: 2px;">
+      <span style="color: oklch(0.70 0.14 45);">6h</span><span>1d</span><span>3d</span><span>7d</span><span>14d</span><span>30d</span><span>90d</span>
+    </div>
+  </div>
+
+  <!-- the empty register still shows its axis and ruled lines: the ledger exists, it is simply blank -->
+  <div style="position: relative; flex-grow: 1; margin: 24px 40px 0 40px; border-top: 1px solid oklch(0.30 0.010 60); overflow: hidden;">
+    <div style="position: absolute; left: 74px; top: 0; bottom: 0; width: 1px; background: oklch(0.24 0.008 60);"></div>
+    <div style="height: 74px; border-bottom: 1px solid oklch(0.21 0.008 60);"></div>
+    <div style="height: 74px; border-bottom: 1px solid oklch(0.21 0.008 60);"></div>
+    <div style="height: 74px; border-bottom: 1px solid oklch(0.21 0.008 60);"></div>
+
+    <div style="position: absolute; left: 110px; top: 96px; max-width: 46ch;">
+      <div style="font-family: Spectral, Georgia, serif; font-size: 18px; line-height: 1.5; color: oklch(0.70 0.012 80); text-wrap: pretty;">
+        Every session in this window is still running, or there were none to begin with.
+      </div>
+      <div style="font-size: 12px; color: oklch(0.50 0.012 80); margin-top: 14px; line-height: 1.7;">
+        Drag the caret right to look further back.<br>
+        Nothing here is deleted. Transcripts keep for as long as your agent keeps them.
+      </div>
+    </div>
+  </div>
+
+  <div style="position: relative; display: flex; align-items: center; gap: 26px; padding: 16px 40px 20px 40px; border-top: 1px solid oklch(0.30 0.010 60);">
+    <div style="flex-grow: 1; font-size: 12px; color: oklch(0.50 0.012 80);">Nothing to raise.</div>
+    <span style="font-size: 11.5px; color: oklch(0.50 0.012 80); border-bottom: 1px solid oklch(0.24 0.008 60); padding-bottom: 1px;">rescan</span>
+    <div style="background: transparent; color: oklch(0.40 0.012 80); border: 1px solid oklch(0.30 0.010 60); padding: 10px 26px; font-size: 12px; letter-spacing: 0.26em;">REVIVE</div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

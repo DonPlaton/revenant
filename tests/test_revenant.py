@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import os
 import sys
@@ -13,7 +12,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import agents  # noqa: E402
 import revenant  # noqa: E402
+import terminals  # noqa: E402
 
 
 NOW = datetime.now(timezone.utc)
@@ -277,10 +278,9 @@ def _register_live(root: Path, session_id: str, pid: int, cwd: str, name: str) -
 
 @pytest.fixture
 def live_agent() -> revenant.Agent:
-    """An agent whose process images include this test runner, so os.getpid() reads as live."""
-    return dataclasses.replace(
-        revenant.CLAUDE_CODE,
-        process_images=revenant.CLAUDE_CODE.process_images | {"python.exe", "python", "python3"},
+    """An agent whose process names include this test runner, so os.getpid() reads as live."""
+    return revenant.CLAUDE_CODE.variant(
+        process_images=revenant.CLAUDE_CODE.process_images | {"python.exe", "python", "python3"}
     )
 
 
@@ -310,9 +310,41 @@ def test_dead_pid_is_not_live(root: Path, live_agent: revenant.Agent) -> None:
     assert not sessions["11111111"].is_live
 
 
-@pytest.mark.skipif(os.name != "nt", reason="pid-reuse guard is the Windows image check")
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("claude.exe", True),
+        ("claude", True),
+        ("node.exe", True),
+        # Claude Code renames its running binary while it updates itself.
+        ("claude.exe.old.1788301984027", True),
+        ("claude.exe.new", True),
+        ("chrome.exe", False),
+        ("python.exe", False),
+        ("", False),
+    ],
+)
+def test_a_renamed_binary_is_still_the_agent(name: str, expected: bool) -> None:
+    assert revenant.looks_like_agent(revenant.CLAUDE_CODE, name) is expected
+
+
+def test_a_process_that_will_not_name_itself_is_held_back(
+    with_live: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Guessing "dead" would relaunch a live session and corrupt its transcript."""
+    monkeypatch.setattr(revenant, "process_states", lambda pids: {int(p): None for p in pids})
+    sessions = {s.session_id[:8]: s for s in revenant.scan_sessions(with_live, since=revenant.parse_when("7d"))}
+    assert sessions["11111111"].is_live
+
+
+def test_a_pid_with_no_process_is_not_live(with_live: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(revenant, "process_states", lambda pids: {})
+    sessions = {s.session_id[:8]: s for s in revenant.scan_sessions(with_live, since=revenant.parse_when("7d"))}
+    assert not sessions["11111111"].is_live
+
+
 def test_unrelated_process_image_is_not_live(with_live: Path) -> None:
-    """This test process is python, not the agent - the stock allowlist must reject it."""
+    """This test process is python, not the agent, so the stock allowlist rejects it."""
     sessions = {s.session_id[:8]: s for s in revenant.scan_sessions(with_live, since=revenant.parse_when("7d"))}
     assert not sessions["11111111"].is_live
 
@@ -437,7 +469,7 @@ def test_render_table_marks_live(
     )
     revenant.render_table(sessions)
     out = capsys.readouterr().out
-    assert "running, pid" in out
+    assert "held back: process" in out
     assert "D:\\Coding\\alpha" in out
 
 
@@ -446,9 +478,11 @@ def test_render_table_empty(capsys: pytest.CaptureFixture[str]) -> None:
     assert "No sessions" in capsys.readouterr().out
 
 
-def test_build_wt_argv_shape(root: Path) -> None:
+def test_windows_terminal_argv_shape(root: Path) -> None:
     sessions = revenant.filter_sessions(revenant.scan_sessions(root, since=revenant.parse_when("7d")))
-    argv = revenant.build_wt_argv(sessions)
+    plan = terminals.WindowsTerminal().plan([s.job() for s in sessions])
+    assert len(plan.commands) == 1, "all tabs belong to one window"
+    argv = plan.commands[0]
     assert argv[:3] == ["wt.exe", "-w", "new"]
     assert argv.count("new-tab") == len(sessions)
     assert argv.count(";") == len(sessions) - 1
@@ -602,10 +636,10 @@ def test_cli_never_writes_to_agent_state(root: Path) -> None:
 
 
 def test_cmd_launcher_uses_quotes_cmd_understands(root: Path) -> None:
-    """`repr()` emits a single-quoted, escaped path that `cd /d` cannot use."""
+    """`repr()` emitted a single-quoted, escaped path that `cd /d` cannot use."""
     sessions = revenant.filter_sessions(revenant.scan_sessions(root, since=revenant.parse_when("24h")))
     script = revenant.render_launcher(sessions, shell="cmd")
-    assert 'cd /d ""D:\\Coding\\alpha""' in script
+    assert '/D "D:\\Coding\\alpha"' in script
     assert "'D:" not in script
 
 
@@ -639,7 +673,7 @@ def test_a_truncated_tail_scan_does_not_invent_a_first_prompt(
 ) -> None:
     """Past the tail window the earliest prompt read is not the session's first."""
     (root / "history.jsonl").unlink()
-    monkeypatch.setattr(revenant, "_TAIL_BYTES", 250)
+    monkeypatch.setattr(agents, "TAIL_BYTES", 250)
     sessions = {s.session_id[:8]: s for s in revenant.scan_sessions(root, since=revenant.parse_when("7d"))}
     alpha = sessions["11111111"]
     assert alpha.first_prompt == ""

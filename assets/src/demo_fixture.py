@@ -16,12 +16,12 @@ from pathlib import Path
 
 #: (directory, prompt, hours ago, turns). Ordered so each slider stop reveals more.
 SESSIONS: list[tuple[str, str, float, int]] = [
-    (r"C:\dev\payments-api", "the retry path double-charges on a gateway timeout — find where", 0.3, 24),
+    (r"C:\dev\payments-api", "the retry path double-charges on a gateway timeout, find where", 0.3, 24),
     (r"C:\dev\checkout-web", "port the checkout form to the new design tokens", 1.5, 12),
     (r"C:\dev\ml-pipeline", "why does the training loop OOM at batch 64 but not 32?", 4.0, 31),
     (r"C:\dev\infra", "add a readiness probe to the ingress and roll it out to staging", 9.0, 8),
     (r"C:\dev\docs-site", "rewrite the quickstart so it works on a clean machine", 20.0, 15),
-    (r"C:\dev\mobile-app", "the list stutters on scroll after the last release — profile it", 30.0, 19),
+    (r"C:\dev\mobile-app", "the list stutters on scroll after the last release, profile it", 30.0, 19),
     (r"C:\dev\payments-api", "backfill the reconciliation job for August", 46.0, 6),
     (r"C:\dev\analytics", "the weekly report double-counts refunds", 60.0, 11),
     (r"C:\dev\scraper", "rate limiting broke when they moved to cursor pagination", 96.0, 22),
