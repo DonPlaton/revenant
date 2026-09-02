@@ -241,12 +241,20 @@ def test_supported_matches_the_current_platform() -> None:
 
 
 def test_fallbacks_exclude_the_one_that_just_failed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(terminals.Terminal, "available", lambda self: self.supported())
-    monkeypatch.setattr(terminals.Tmux, "available", lambda self: True)
+    """CI runners have no terminal installed, so pretend every backend is there."""
+    for cls in terminals.ALL:
+        monkeypatch.setattr(cls, "available", lambda self: self.supported() or cls is terminals.Tmux)
+    monkeypatch.delenv("TMUX", raising=False)
     first = terminals.choose()
     others = terminals.fallbacks(first)
     assert first.key not in [t.key for t in others]
     assert others, "there is always somewhere else to try"
+
+
+def test_fallbacks_are_empty_when_nothing_else_is_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    for cls in terminals.ALL:
+        monkeypatch.setattr(cls, "available", lambda self: False)
+    assert terminals.fallbacks(terminals.WindowsTerminal()) == []
 
 
 def test_launch_moves_on_when_a_terminal_refuses_to_start(

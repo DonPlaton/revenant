@@ -229,7 +229,7 @@ agents at once, want a window rather than a flag, and are not necessarily on a M
 python -m pytest tests -q
 ```
 
-159 tests, no network, no real session touched. Everything runs against a synthetic config
+160 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, live process detection and id
 reuse, the refusal to relaunch a running session, the argv of all fourteen terminal backends on
 all three platforms, quoting of paths with spaces and apostrophes, corrupt and truncated
