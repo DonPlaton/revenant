@@ -1,0 +1,22 @@
+# Line endings are part of whether the installers work, so they are pinned here
+# rather than left to whatever each contributor's git is configured to do.
+#
+# A shell script with CRLF fails on Linux and macOS with "bad interpreter", which
+# is a confusing way to find out that someone committed from Windows.
+
+* text=auto eol=lf
+
+*.sh        text eol=lf
+*.command   text eol=lf
+*.desktop   text eol=lf
+
+# Batch files are read by cmd.exe, which expects Windows endings.
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+
+*.png       binary
+*.gif       binary
+*.ico       binary
+*.icns      binary
+*.svg       text eol=lf

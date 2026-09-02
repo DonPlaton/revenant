@@ -38,28 +38,75 @@ A session that is still running is hatched and held back. Then hit REVIVE.</sub>
 
 </div>
 
-## Install
+## Quick start
 
-### As a desktop app
+One line, and you have the app.
+
+**Windows**, in PowerShell:
 
 ```powershell
-git clone https://github.com/DonPlaton/revenant
-cd revenant
-.\install.ps1 -NativeWindow        # Windows
+irm https://raw.githubusercontent.com/DonPlaton/revenant/main/install.ps1 | iex
+```
+
+**macOS and Linux**, in a terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DonPlaton/revenant/main/install.sh | bash
+```
+
+The installer downloads the app, checks you have a Python it can use, and leaves you a launcher:
+
+| | you get | it lives in |
+|---|---|---|
+| Windows | Desktop and Start Menu shortcuts | `%LOCALAPPDATA%\Programs\Revenant` |
+| macOS | `Revenant.app`, with an icon | `~/Applications`, code in `~/.local/share/revenant` |
+| Linux | an entry in your application menu | `~/.local/share/revenant` |
+
+Nothing runs in the background, nothing starts at login, and no PATH is changed unless you ask.
+
+<details>
+<summary><b>Without piping the internet into a shell</b></summary>
+
+Fair. Download the repository as a zip, or clone it, then:
+
+- **Windows**: double-click **Install Revenant.cmd**.
+- **macOS**: double-click **Install Revenant.command**. A zip download loses the executable bit,
+  so if nothing happens, run `chmod +x "Install Revenant.command"` once.
+- **Linux**: `./install.sh`
+
+Both scripts behave the same either way. Run from a clone they point the launcher at that folder
+and copy nothing, which is what you want while you are working on it.
+
+</details>
+
+<details>
+<summary><b>Options, requirements and removing it</b></summary>
+
+Revenant needs **Python 3.10 or newer**. The installer looks for one, ignores the Microsoft Store
+stub that pretends to be `python.exe`, and tells you how to get a real one if there is none. On
+Windows, adding `-InstallPython` lets it fetch Python through winget instead of stopping.
+
+`--native-window` (`-NativeWindow` on Windows) also installs
+[pywebview](https://pywebview.flowrl.com/), so the app opens in its own frameless window instead
+of a chromeless Chrome or Edge window. If it will not install, the app still works.
+
+To pass a flag through the one-liner:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/DonPlaton/revenant/main/install.ps1))) -NativeWindow -Cli
 ```
 
 ```bash
-git clone https://github.com/DonPlaton/revenant
-cd revenant
-./install.sh --native-window       # macOS and Linux
+curl -fsSL https://raw.githubusercontent.com/DonPlaton/revenant/main/install.sh | bash -s -- --native-window --cli
 ```
 
-On Windows you get Desktop and Start Menu shortcuts. On macOS you get `~/Applications/Revenant.app`
-with a real icon. On Linux you get a `.desktop` entry in your application menu. Nothing is copied
-out of the folder and no PATH is changed. `--native-window` also installs
-[pywebview](https://pywebview.flowrl.com/) so the app opens in its own frameless window; without
-it the app opens as a chromeless Chrome or Edge window instead. The uninstall scripts remove what
-the installers added.
+`--cli` puts `revenant` on your PATH. `--ref v1.2.0` (`-Ref` on Windows) installs a specific
+version rather than the current main.
+
+To remove it: **Uninstall Revenant.cmd**, `.\uninstall.ps1`, or `./uninstall.sh`. They take back
+the shortcuts, the PATH entry and the downloaded copy. A clone is never touched.
+
+</details>
 
 ### As a command line tool
 
