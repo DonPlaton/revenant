@@ -24,6 +24,11 @@ HEAD_LINES = 80
 # Bytes read from the end of a transcript when the prompt index has no entry for it.
 TAIL_BYTES = 256 * 1024
 
+#: Claude Code appends the session's name to the transcript whenever it changes,
+#: as one record per kind. Highest priority first: a name the user set with
+#: `/rename` beats a title the model generated, which beats the agent's own name.
+TITLE_RECORDS = (("custom-title", "customTitle"), ("ai-title", "aiTitle"), ("agent-name", "agentName"))
+
 # Harness plumbing that lands in the transcript looking like something the user typed.
 _META_PROMPT = re.compile(
     r"^\s*<(local-command-caveat|local-command-stdout|command-name|command-message"
@@ -89,20 +94,29 @@ def _records(path: Path, *, limit: int | None = None) -> Iterator[dict]:
                 yield record
 
 
-def _tail_records(path: Path, *, window: int) -> Iterator[dict]:
-    """Yield JSON objects from the last `window` bytes, plus whether the file fit."""
+def _tail_lines(path: Path, *, window: int) -> Iterator[bytes]:
+    """Yield whole lines from the last `window` bytes of a file, as raw bytes.
+
+    Callers that only want a few kinds of record can test the bytes and skip the
+    cost of parsing the rest.
+    """
     try:
         size = path.stat().st_size
         with path.open("rb") as handle:
             if size > window:
                 handle.seek(size - window)
                 handle.readline()  # drop the partial line
-            blob = handle.read().decode("utf-8", errors="replace")
+            blob = handle.read()
     except OSError:
         return
-    for line in blob.splitlines():
+    yield from blob.splitlines()
+
+
+def _tail_records(path: Path, *, window: int) -> Iterator[dict]:
+    """Yield JSON objects from the last `window` bytes of a JSONL file."""
+    for line in _tail_lines(path, window=window):
         try:
-            record = json.loads(line)
+            record = json.loads(line.decode("utf-8", errors="replace"))
         except json.JSONDecodeError:
             continue
         if isinstance(record, dict):
@@ -167,6 +181,14 @@ class Agent:
     def session_id(self, transcript: Path) -> str:
         return transcript.stem
 
+    def root_of(self, transcript: Path) -> Path:
+        """The config directory this transcript was found under.
+
+        Derived from the glob's depth so that it stays right for `--root` and for
+        any agent added later.
+        """
+        return transcript.parents[self.transcript_glob.count("/")]
+
     def group(self, transcript: Path) -> str:
         """A short label for where the transcript is filed, used as a fallback name."""
         return transcript.parent.name
@@ -181,6 +203,14 @@ class Agent:
 
     def history(self, root: Path) -> dict[str, list[tuple[datetime, str, str]]]:
         """sessionId -> [(when, prompt, project)] from the agent's prompt index."""
+        return {}
+
+    def title(self, transcript: Path) -> str:
+        """The session's own name, read from its transcript. Empty when it has none."""
+        return ""
+
+    def titles(self, root: Path) -> dict[str, str]:
+        """sessionId -> name, for agents that keep names in one index file."""
         return {}
 
     def live_registry(self, root: Path) -> dict[str, dict]:
@@ -239,6 +269,31 @@ class ClaudeCode(Agent):
         if not prompts:
             return "", "", 0, complete
         return (prompts[0] if complete else ""), prompts[-1], len(prompts), complete
+
+    def title(self, transcript: Path) -> str:
+        """The name shown in Claude Code's own session picker.
+
+        Naming records are rewritten on almost every turn, so the last one in the
+        file is current. Candidate lines are picked out with a substring test first,
+        because parsing every record in the window would cost more than the scan.
+        """
+        kinds = [kind.encode() for kind, _ in TITLE_RECORDS]
+        newest: dict[str, str] = {}
+        for raw in _tail_lines(transcript, window=TAIL_BYTES):
+            if not any(kind in raw for kind in kinds):
+                continue
+            try:
+                record = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            for _, field in TITLE_RECORDS:
+                value = record.get(field)
+                if isinstance(value, str) and value.strip():
+                    newest[field] = value.strip()
+        for _, field in TITLE_RECORDS:
+            if field in newest:
+                return clean_prompt(newest[field], limit=80)
+        return ""
 
     def history(self, root: Path) -> dict[str, list[tuple[datetime, str, str]]]:
         index: dict[str, list[tuple[datetime, str, str]]] = defaultdict(list)
@@ -360,6 +415,16 @@ class Codex(Agent):
         for entries in index.values():
             entries.sort(key=lambda item: item[0])
         return index
+
+
+    def titles(self, root: Path) -> dict[str, str]:
+        """Codex names threads in one index file rather than in the rollouts."""
+        found: dict[str, str] = {}
+        for record in _records(root / "session_index.jsonl"):
+            name = record.get("thread_name")
+            if record.get("id") and isinstance(name, str) and name.strip():
+                found[record["id"]] = clean_prompt(name, limit=80)
+        return found
 
 
 AGENTS: dict[str, Agent] = {agent.key: agent for agent in (ClaudeCode(), Codex())}

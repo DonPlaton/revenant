@@ -17,13 +17,17 @@
 
 ## The problem
 
-Claude Code's `--resume` picker only lists conversations from the directory you are standing in.
-That is fine for one project. It is useless when a bluescreen takes down nine sessions spread
-across nine directories, because now you have to remember every path, `cd` there, and hunt for
-the right conversation in each picker. Codex does not even have a picker that spans directories.
+After a crash you do not want a conversation back. You want the nine you had open.
+
+Claude Code can find them: `Ctrl+A` in its picker widens the list to every project on the machine.
+What it will not do is bring them back together. It restores one session into the terminal you are
+standing in, and when that session belongs to another project it copies a `cd` and a resume command
+to your clipboard for you to paste yourself. Nine sessions is nine trips through that, in nine
+terminals you open by hand. Codex has no picker that spans directories at all.
 
 Revenant lists every session that was active in a window you choose, across every directory and
-both agents, and brings back the ones you pick.
+both agents, and opens the ones you pick: each in its own tab, already in its own directory,
+already resumed.
 
 <div align="center">
 
@@ -148,12 +152,19 @@ terminal on the list rather than failing.
 | Claude Code | `~/.claude/projects/<slug>/<uuid>.jsonl` | it registers itself, so this is exact |
 | Codex | `~/.codex/sessions/<date>/rollout-*.jsonl` | no registry, so anything touched in the last two minutes is held back |
 
+Each row is labelled with the name the agent itself uses: what you set with `/rename`, or the title
+it generated from your first prompt. That is usually the difference between reading `continue` and
+reading `Fix the retry loop in the payment worker`.
+
 Sessions you start from the integrated terminal in VS Code, Cursor or Windsurf are ordinary CLI
 sessions, so they are found and revived like any other. Chat panels built into those editors keep
 their history in the editor's own database and expose no way to resume one, so Revenant does not
 pretend to handle them.
 
-Adding another agent means one subclass in `agents.py` and one line in the registry. See
+Claude Code's own picker hides sessions started with `-p`, with the SDK, or with `/loop`. Revenant
+lists them, because after a crash you may well want one of those back.
+
+Adding another agent means one subclass in `revenant_agents.py` and one line in the registry. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## How it works
@@ -173,8 +184,8 @@ Measured on 34 transcripts totalling 534 MB, on an eight core desktop:
 
 | | |
 |---|---|
-| scan a seven day window | 40 ms |
-| scan everything on disk | 50 ms |
+| scan a seven day window | 40 ms, plus 12 ms to read the names of the rows it kept |
+| scan everything on disk | 52 ms, plus 20 ms |
 | repeat request in the app | 0.2 ms, served from an eight second cache |
 | peak Python heap for a full scan | 1.5 MB |
 | the app while you look at it | 0.3% of one core |
@@ -195,9 +206,12 @@ session, and a test asserts that a full run leaves every file under `~/.claude` 
 byte.
 
 A session whose process is alive is held back, and `--launch` refuses it outright, because two
-processes writing one transcript corrupt it. On Windows the check compares the process id against
-the real executable name, so a recycled id cannot pose as a live session. Codex keeps no registry,
-so a rollout file touched in the last two minutes is treated as possibly open.
+processes writing one transcript corrupt it. The check compares the process id against the real
+executable name, so a recycled id cannot pose as a live session, and it errs one way on purpose:
+a process it cannot read, a binary an installer renamed mid-update, a name the kernel truncated,
+all count as the agent and keep the session off the list. Being wrong that way costs you a row.
+Being wrong the other way costs you a transcript. Codex keeps no registry, so a rollout file
+touched in the last two minutes is treated as possibly open.
 
 The desktop backend binds to `127.0.0.1` on an ephemeral port, mints a token at startup and
 requires it on every request, rejects any request whose `Host` header is not that exact address,
@@ -206,22 +220,40 @@ remote fonts, scripts or styles, so it works with the network off.
 
 ## How it compares
 
-Several session restore tools exist for Claude Code. They are macOS or tmux first, and all of
-them are terminal only:
+Two different things get called a session manager.
 
-| | platform | interface | agents |
-|---|---|---|---|
-| **Revenant** | **Windows, macOS, Linux** | **desktop app** and CLI | **Claude Code, Codex** |
-| [Supersynergy/claude-session-restore](https://github.com/Supersynergy/claude-session-restore) | macOS, some Linux | CLI and MCP | Claude Code |
-| [Livshitz/claude-revive](https://github.com/Livshitz/claude-revive) | macOS | TUI picker | Claude Code |
-| [drewburchfield/claude-session-manager](https://github.com/drewburchfield/claude-session-manager) | macOS | CLI, snapshots | Claude Code |
-| [asadtariq96/cc-session-restore](https://github.com/asadtariq96/cc-session-restore) | macOS with iTerm2 | CLI and a LaunchAgent | Claude Code |
-| [Mahrkeenerh/ClaudeRestore](https://github.com/Mahrkeenerh/ClaudeRestore) | Linux | CLI | Claude Code |
-| [cookiecad/tmux-claude-resurrect](https://github.com/cookiecad/tmux-claude-resurrect) | tmux | plugin | Claude Code |
-| [STRML/cmux-restore](https://github.com/STRML/cmux-restore) | cmux | CLI | Claude Code |
+**Managing the sessions you are running.** [ccmanager](https://github.com/kbwo/ccmanager),
+[agent-deck](https://github.com/asheshgoplani/agent-deck) and
+[myrlin-workbook](https://github.com/therealarthur/myrlin-workbook) run and switch between live
+sessions across worktrees; [agent-manager-x](https://github.com/maddada/agent-manager-x) and
+[Aeroric](https://github.com/Aho1ic/Aeroric) watch them from a desktop app. These are good tools
+and Revenant does not replace them. They also die with the machine, which is when Revenant starts.
 
-If you live in tmux, the tmux plugin is a better fit. Revenant is for people who run several
-agents at once, want a window rather than a flag, and are not necessarily on a Mac.
+**Bringing them back afterwards.** That is this category, and almost all of it works by snapshot:
+a scheduled task records which sessions are open every couple of minutes, and restore replays the
+last record. It works, until the crash happens on a machine where the daemon was not installed
+yet, or had not run since you opened the sessions that matter.
+
+| | platform | interface | needs a daemon first | agents |
+|---|---|---|---|---|
+| **Revenant** | **Windows, macOS, Linux** | **desktop app** and CLI | **no** | Claude Code, Codex |
+| [ai-session-manager](https://github.com/daniel-farina/ai-session-manager) | macOS, Linux | web app, copies a command | no | **9** |
+| [SnowSky1/claude-session-restore](https://github.com/SnowSky1/claude-session-restore) | Windows | desktop shortcut | yes, every 2 min | Claude Code |
+| [Supersynergy/claude-session-restore](https://github.com/Supersynergy/claude-session-restore) | macOS, some Linux | CLI and MCP | yes | Claude Code |
+| [Livshitz/claude-revive](https://github.com/Livshitz/claude-revive) | macOS | TUI picker | no | Claude Code |
+| [asadtariq96/cc-session-restore](https://github.com/asadtariq96/cc-session-restore) | macOS with iTerm2 | CLI and a LaunchAgent | yes | Claude Code |
+| [Mahrkeenerh/ClaudeRestore](https://github.com/Mahrkeenerh/ClaudeRestore) | Linux | CLI | yes | Claude Code |
+| [oviron/claude-session-widget](https://github.com/oviron/claude-session-widget) | macOS | menu-bar app | yes | Claude Code |
+| [cookiecad/tmux-claude-resurrect](https://github.com/cookiecad/tmux-claude-resurrect) | tmux | plugin | tmux-resurrect | Claude Code |
+| [STRML/cmux-restore](https://github.com/STRML/cmux-restore) | cmux | CLI | yes | Claude Code |
+
+Revenant needs nothing installed before the crash, because it reads the transcripts the agent
+already wrote. Install it afterwards and it still finds everything.
+
+Pick something else if you live in tmux, if you want a monitor for running agents, or if you use
+one of the seven agents Revenant does not read yet. `ai-session-manager` is the closest neighbour:
+it reads nine agents and hands you a command to paste, where Revenant reads two and opens the
+terminals itself, on Windows too.
 
 ## Development
 
@@ -229,11 +261,12 @@ agents at once, want a window rather than a flag, and are not necessarily on a M
 python -m pytest tests -q
 ```
 
-160 tests, no network, no real session touched. Everything runs against a synthetic config
-directory in `tmp_path`. They cover both agents' file formats, live process detection and id
-reuse, the refusal to relaunch a running session, the argv of all fourteen terminal backends on
-all three platforms, quoting of paths with spaces and apostrophes, corrupt and truncated
-transcripts, the desktop backend's token, host and traversal guards, and the read only guarantee.
+189 tests, no network, no real session touched. Everything runs against a synthetic config
+directory in `tmp_path`. They cover both agents' file formats, session naming, live process
+detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
+terminal backends on all three platforms, quoting of paths with spaces and apostrophes, corrupt
+and truncated transcripts, the desktop backend's token, host and traversal guards, and the read
+only guarantee.
 
 Regenerate the images after changing the interface:
 

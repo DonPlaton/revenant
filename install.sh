@@ -26,7 +26,13 @@ PYTHON="$(command -v python3 || command -v python || true)"
 
 if [ "$NATIVE" = 1 ]; then
   echo "Installing pywebview for a native window..."
-  "$PYTHON" -m pip install --quiet --upgrade pywebview
+  # Distributions that manage their own Python refuse this (PEP 668). Losing the
+  # native window is no reason to leave the machine with no launcher at all.
+  "$PYTHON" -m pip install --quiet --upgrade pywebview ||
+    "$PYTHON" -m pip install --quiet --upgrade --user pywebview || {
+      echo "Could not install pywebview; the app will open in a browser window instead." >&2
+      echo "For the native window, install pywebview into a virtualenv or with pipx." >&2
+    }
 fi
 
 case "$(uname -s)" in
@@ -81,7 +87,7 @@ LAUNCHER
 Type=Application
 Name=Revenant
 Comment=Bring your agent sessions back from the dead
-Exec=$PYTHON $HERE/revenant_gui.py
+Exec="$PYTHON" "$HERE/revenant_gui.py"
 Path=$HERE
 Icon=revenant
 Terminal=false

@@ -5,9 +5,9 @@ Finds every coding-agent session that was active in a chosen time window and
 restores it: a readable table, paste-ready `cd` + resume command pairs, a
 launcher script, or one terminal tab per session.
 
-The agents themselves live in `agents.py`, the terminals in `terminals.py`, and
-the desktop app in `revenant_gui.py`. This module is the discovery, the filtering
-and the command line.
+The agents themselves live in `revenant_agents.py`, the terminals in
+`revenant_terminals.py`, and the desktop app in `revenant_gui.py`. This module is
+the discovery, the filtering and the command line.
 
 Safety contract: Revenant never signals, kills, or writes to a running session.
 Sessions whose process is still alive are detected and held back by default.
@@ -25,16 +25,17 @@ import re
 import shutil
 import subprocess
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Sequence
 
-import terminals
-from agents import AGENTS, Agent, get_agent, installed_agents, is_meaningful
-from agents import DEFAULT_AGENT as CLAUDE_CODE
+import revenant_terminals as terminals
+from revenant_agents import AGENTS, Agent, get_agent, installed_agents, is_meaningful
+from revenant_agents import DEFAULT_AGENT as CLAUDE_CODE
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 APP_NAME = "Revenant"
 
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhdw])$", re.IGNORECASE)
@@ -55,6 +56,11 @@ def state_dir() -> Path:
 # --------------------------------------------------------------------------- #
 
 
+def _squash(text: str) -> str:
+    """Letters and digits only, folded, for comparing two names for sameness."""
+    return "".join(char for char in text.lower() if char.isalnum())
+
+
 @dataclass
 class Session:
     """One agent conversation reconstructed from disk."""
@@ -69,6 +75,8 @@ class Session:
     turns: int | None = None
     first_prompt: str = ""
     last_prompt: str = ""
+    #: What the agent calls this session: a name the user set, else a generated title.
+    title: str = ""
     git_branch: str | None = None
     version: str | None = None
     size_bytes: int = 0
@@ -81,6 +89,19 @@ class Session:
     @property
     def is_live(self) -> bool:
         return self.live_reason is not None
+
+    @property
+    def summary(self) -> str:
+        """One line describing the session, best source first.
+
+        The agent's own title beats the last prompt, which is often "continue" and
+        says nothing about what the session was for. A title that only repeats the
+        directory already in the next column earns its place back to the prompt.
+        """
+        prompt = self.last_prompt or self.first_prompt
+        if self.title and _squash(self.title) != _squash(self.label):
+            return self.title
+        return prompt or self.title
 
     @property
     def label(self) -> str:
@@ -228,9 +249,12 @@ def _states_posix(pids: Sequence[int]) -> dict[int, str | None]:
             if not Path(f"/proc/{pid}").is_dir():
                 continue
             try:
-                found[pid] = Path(f"/proc/{pid}/comm").read_text().strip().lower()
+                comm = Path(f"/proc/{pid}/comm").read_text().strip().lower()
             except OSError:
-                found[pid] = None
+                comm = ""
+            # An unreadable or empty name is not evidence of anything, and must not
+            # read as "some other program", which would clear the session.
+            found[pid] = comm or None
         return found
 
     if not pids:
@@ -271,16 +295,35 @@ def process_states(pids: Sequence[int]) -> dict[int, str | None]:
 
 
 def looks_like_agent(agent: Agent, name: str) -> bool:
-    """Is this executable plausibly the agent, allowing for a renamed binary?"""
+    """Is this executable plausibly the agent?
+
+    Deliberately generous. An installer renames the running binary while it
+    replaces it, `/proc/<pid>/comm` is truncated to fifteen characters, and people
+    launch agents through wrappers, so an exact list of names would eventually
+    clear a running session for revival and corrupt its transcript. Saying yes to
+    something that is not the agent only costs a session left off the list.
+    """
     base = _RENAMED.sub("", name.lower())
     if base in agent.process_images:
         return True
+    stem = base.split(".", 1)[0]
+    if not stem:
+        return True
     stems = {image.split(".", 1)[0] for image in agent.process_images}
-    return base.split(".", 1)[0] in stems
+    return any(stem.startswith(known) or known.startswith(stem) for known in stems)
 
 
 def _pid_alive(pid: int) -> bool:
-    """Fallback liveness check when no process table is available."""
+    """Fallback liveness check when no process table is available.
+
+    Never probes on Windows. There `os.kill(pid, 0)` is not a probe at all: CPython
+    opens the process with PROCESS_ALL_ACCESS and calls TerminateProcess for every
+    signal but Ctrl-C and Ctrl-Break, so asking whether a session is alive would
+    end it. Reporting every pid as alive is the safe answer, and this is only
+    reached once the real check has already failed.
+    """
+    if os.name == "nt":
+        return True
     try:
         os.kill(pid, 0)
     except TypeError:
@@ -408,14 +451,37 @@ def scan_all(
     since: datetime,
     until: datetime | None = None,
     agents: Sequence[Agent] | None = None,
+    slug_filter: str | None = None,
 ) -> list[Session]:
     """Scan every installed agent and merge the results, newest first."""
     found: list[Session] = []
     for agent in agents if agents is not None else installed_agents():
-        found += scan_sessions(agent.config_dir(), since=since, until=until, agent=agent)
+        found += scan_sessions(
+            agent.config_dir(), since=since, until=until, agent=agent, slug_filter=slug_filter
+        )
     epoch = datetime.min.replace(tzinfo=timezone.utc)
     found.sort(key=lambda item: item.last_active or epoch, reverse=True)
     return found
+
+
+def name_sessions(sessions: Sequence[Session]) -> None:
+    """Fill in each session's title, in place.
+
+    Kept out of the scan because it reads the end of every transcript it is given.
+    Call it once the list has been filtered down to what will actually be shown.
+    """
+    by_agent: dict[str, list[Session]] = defaultdict(list)
+    for session in sessions:
+        by_agent[session.agent.key].append(session)
+    for group in by_agent.values():
+        agent = group[0].agent
+        indexed: dict[Path, dict[str, str]] = {}
+        for session in group:
+            root = agent.root_of(session.transcript)
+            if root not in indexed:
+                indexed[root] = agent.titles(root)
+            named = indexed[root].get(session.session_id)
+            session.title = named or agent.title(session.transcript)
 
 
 def filter_sessions(
@@ -587,14 +653,14 @@ def render_table(sessions: Sequence[Session], *, stream=None, now: datetime | No
     header = f"{palette.dim}{_pad('#', index_w)}  {_pad('AGE', age_w)} {_pad('TURNS', turns_w)} "
     if multi_agent:
         header += f"{_pad('AGENT', agent_w)} "
-    header += f"{_pad('SESSION', label_w)}  LAST PROMPT{palette.reset}"
+    header += f"{_pad('SESSION', label_w)}  ABOUT{palette.reset}"
     print(header, file=stream)
 
     for number, session in enumerate(sessions, start=1):
         age = humanize_age(session.last_active, now=now)
         turns = str(session.turns) if session.turns is not None else "?"
         mark = f"{palette.green}*{palette.reset}" if session.is_live else " "
-        prompt = _truncate(session.last_prompt or session.first_prompt or "-", prompt_w)
+        prompt = _truncate(session.summary or "-", prompt_w)
         row = f"{_pad(str(number), index_w)}{mark} {_pad(age, age_w)} {_pad(turns, turns_w)} "
         if multi_agent:
             row += f"{palette.cyan}{_pad(session.agent.label, agent_w)}{palette.reset} "
@@ -634,7 +700,7 @@ def render_commands(sessions: Sequence[Session], *, shell: str = "pwsh") -> str:
     lines: list[str] = []
     for session in sessions:
         cwd = str(session.cwd) if session.cwd else ""
-        comment = session.last_prompt or session.first_prompt or session.label
+        comment = session.summary or session.label
         if shell == "cmd":
             lines.append(f":: {session.label} - {comment}")
             lines.append(f'cd /d "{cwd}"' if cwd else ":: unknown directory")
@@ -748,9 +814,9 @@ def plan_launch(
     """Choose a terminal and build the commands, without running anything."""
     chosen = terminals.choose(terminal)
     jobs = [session.job() for session in sessions if session.cwd]
-    if isinstance(chosen, terminals.WindowsTerminal):
-        return chosen, chosen.plan(jobs, window=window, profile=profile)
-    return chosen, chosen.plan(jobs)
+    # Options a backend does not use are ignored by its own signature, so every
+    # backend, including one we fall back to, is offered all of them.
+    return chosen, chosen.plan(jobs, window=window, profile=profile)
 
 
 def launch(
@@ -791,7 +857,7 @@ def launch(
         for candidate in terminals.fallbacks(chosen):
             print(f"{chosen.label} would not start ({message}); trying {candidate.label}.", file=stream)
             chosen = candidate
-            plan = candidate.plan(jobs)
+            plan = candidate.plan(jobs, window=window, profile=profile)
             opened, message = terminals.run(plan)
             if opened:
                 break
@@ -858,6 +924,8 @@ def session_to_dict(session: Session) -> dict:
         "ageLabel": humanize_age(session.last_active),
         "startedAt": session.started_at.isoformat() if session.started_at else None,
         "turns": session.turns,
+        "title": session.title,
+        "summary": session.summary,
         "firstPrompt": session.first_prompt,
         "lastPrompt": session.last_prompt,
         "gitBranch": session.git_branch,
@@ -924,6 +992,9 @@ def build_parser() -> argparse.ArgumentParser:
     output.add_argument("--terminal", help=f"where to open sessions ({', '.join(sorted(terminals.BY_KEY))})")
     output.add_argument("--window", default="new", help="wt.exe target window: new, 0, or a name")
     output.add_argument("--profile", help="Windows Terminal profile for new tabs")
+    # 1.0 shipped this; --terminal replaced it. Failing outright on an old alias in
+    # someone's script is worse than honouring it.
+    output.add_argument("--no-tabs", action="store_true", help=argparse.SUPPRESS)
     output.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     return parser
 
@@ -972,6 +1043,10 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
             pass
 
     args = build_parser().parse_args(argv)
+    if args.no_tabs and not args.terminal:
+        # What --no-tabs meant in 1.0: a window per session rather than tabs.
+        args.terminal = "conhost" if os.name == "nt" else None
+        print("revenant: --no-tabs is deprecated; use --terminal.", file=sys.stderr)
     agent = get_agent(args.agent)
     shell = args.shell or ("pwsh" if os.name == "nt" else "bash")
 
@@ -1008,7 +1083,16 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
         return 0
 
     if args.all_agents:
-        sessions = scan_all(since=since, until=until)
+        # Each of these names a single agent, so pairing them with --all-agents asks
+        # for two different things at once. Silently honouring one was the old bug.
+        for flag, value in (("--agent", args.agent), ("--root", args.root)):
+            if value:
+                print(f"revenant: {flag} and --all-agents ask for different things.", file=stream)
+                return 2
+        if args.from_snapshot:
+            print("revenant: --from-snapshot restores one agent; drop --all-agents.", file=stream)
+            return 2
+        sessions = scan_all(since=since, until=until, slug_filter=args.slug)
         if not sessions and not installed_agents():
             print("No agents found on this machine.", file=stream)
             return 1
@@ -1032,6 +1116,7 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
         latest_per_dir=args.latest_per_dir,
         limit=args.limit or None,
     )
+    name_sessions(selected)
 
     if args.as_json:
         print(to_json(selected), file=stream)

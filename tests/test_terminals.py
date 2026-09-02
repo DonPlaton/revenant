@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import terminals  # noqa: E402
+import revenant_terminals as terminals  # noqa: E402
 
 
 JOBS = [
@@ -101,13 +101,16 @@ def test_applescript_escapes_quotes_and_backslashes() -> None:
     assert script.count('do script "') == 1
 
 
-def test_gnome_terminal_builds_one_call_with_tabs() -> None:
+def test_gnome_terminal_calls_once_per_tab() -> None:
+    """`--` ends option parsing for the whole line, so one call carries one command."""
     plan = terminals.GnomeTerminal().plan(JOBS)
-    assert len(plan.commands) == 1
-    argv = plan.commands[0]
-    assert argv[0] == "gnome-terminal"
-    assert argv.count("--tab") == 2
-    assert "--working-directory=/home/me/ml" in argv
+    assert len(plan.commands) == 2
+    for argv in plan.commands:
+        assert argv[0] == "gnome-terminal"
+        assert argv.count("--tab") == 1
+        assert argv.count("--") == 1
+        assert argv[-3:-1] == ["sh", "-c"]
+    assert "--working-directory=/home/me/ml" in plan.commands[1]
 
 
 def test_konsole_opens_a_tab_per_session() -> None:
@@ -140,11 +143,14 @@ def test_simple_unix_terminals_carry_directory_and_command(backend, binary: str)
     assert "claude --resume abc" in argv[-1]
 
 
-def test_ghostty_uses_its_own_flag_style() -> None:
+def test_ghostty_puts_the_command_after_a_bare_dash_e() -> None:
+    """Ghostty's -e swallows the rest of argv, so it has to come last."""
     argv = terminals.Ghostty().plan(JOBS).commands[0]
     assert argv[0] == "ghostty"
     assert argv[1] == "--working-directory=/home/me/payments api"
-    assert argv[2].startswith("-e=")
+    assert argv[2] == "-e"
+    assert argv[3:5] == ["sh", "-c"]
+    assert "claude --resume abc" in argv[5]
 
 
 def test_xterm_titles_each_window() -> None:
@@ -243,7 +249,10 @@ def test_supported_matches_the_current_platform() -> None:
 def test_fallbacks_exclude_the_one_that_just_failed(monkeypatch: pytest.MonkeyPatch) -> None:
     """CI runners have no terminal installed, so pretend every backend is there."""
     for cls in terminals.ALL:
-        monkeypatch.setattr(cls, "available", lambda self: self.supported() or cls is terminals.Tmux)
+        # Bound as a default so each lambda keeps its own class, not the last one.
+        monkeypatch.setattr(
+            cls, "available", lambda self, cls=cls: self.supported() or cls is terminals.Tmux
+        )
     monkeypatch.delenv("TMUX", raising=False)
     first = terminals.choose()
     others = terminals.fallbacks(first)
@@ -271,7 +280,7 @@ def test_launch_moves_on_when_a_terminal_refuses_to_start(
         def available(self) -> bool:
             return True
 
-        def plan(self, jobs):
+        def plan(self, jobs, **_):
             return terminals.Plan(self.key, [["definitely-not-a-program"]])
 
     class Works(terminals.Terminal):
@@ -281,7 +290,7 @@ def test_launch_moves_on_when_a_terminal_refuses_to_start(
         def available(self) -> bool:
             return True
 
-        def plan(self, jobs):
+        def plan(self, jobs, **_):
             return terminals.Plan(self.key, [["echo", job.label] for job in jobs])
 
     broken, works = Broken(), Works()
@@ -309,7 +318,7 @@ def test_a_pinned_terminal_is_not_second_guessed(
         def available(self) -> bool:
             return True
 
-        def plan(self, jobs):
+        def plan(self, jobs, **_):
             return terminals.Plan(self.key, [["nope"]])
 
     monkeypatch.setattr(terminals, "choose", lambda preferred=None: Broken())
@@ -322,3 +331,26 @@ def test_a_pinned_terminal_is_not_second_guessed(
     )
     assert revenant.launch([session], terminal="broken") == 3
     assert not called, "the user asked for this terminal, so do not silently switch"
+
+
+def test_tmux_session_names_do_not_collide_between_revives() -> None:
+    """`new-session` fails on a duplicate name, and that costs exactly one session."""
+    first = terminals.Tmux().plan(JOBS).commands[0]
+    assert first[:3] == ["tmux", "new-session", "-d"]
+    name = first[first.index("-s") + 1]
+    assert name.startswith("revenant-") and name != "revenant"
+
+
+def test_a_terminal_that_quits_immediately_is_not_counted_as_opened() -> None:
+    """Windows Terminal fails this way on a bad profile: it starts, then gives up."""
+    plan = terminals.Plan("conhost", [[sys.executable, "-c", "raise SystemExit(3)"]])
+    opened, message = terminals.run(plan)
+    assert opened == 0
+    assert "status 3" in message
+
+
+def test_a_terminal_that_hands_off_cleanly_counts_as_opened() -> None:
+    plan = terminals.Plan("conhost", [[sys.executable, "-c", "pass"]])
+    opened, message = terminals.run(plan)
+    assert opened == 1
+    assert message == ""

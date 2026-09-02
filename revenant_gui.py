@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-import agents as agent_registry
+import revenant_agents as agent_registry
 import revenant
 from revenant import Agent, CLAUDE_CODE
 
@@ -136,9 +136,16 @@ class Backend:
 
         found = self._scan(days, which)
         selected = revenant.filter_sessions(found, include_live=include_live, limit=None)
-        where = "several places" if which == "all" else str(
-            next((a.config_dir() for a in self.available() if a.key == which), self.root)
-        )
+        revenant.name_sessions(selected)
+        # An explicit --root is what was actually read, so it is what gets shown.
+        if self.explicit_root:
+            where = str(self.root)
+        elif which == "all":
+            where = "several places"
+        else:
+            where = str(
+                next((a.config_dir() for a in self.available() if a.key == which), self.root)
+            )
         return {
             "sessions": [revenant.session_to_dict(s) for s in selected],
             "agents": choices,
