@@ -82,7 +82,7 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         base,
         [
             ("11111111-1111-1111-1111-111111111111", "/model", r"D:\Coding\alpha", 2.2),
-            ("11111111-1111-1111-1111-111111111111", "почини тесты", r"D:\Coding\alpha", 2.0),
+            ("11111111-1111-1111-1111-111111111111", "fix the naïve café parser", r"D:\Coding\alpha", 2.0),
             ("22222222-2222-2222-2222-222222222222", "old work", r"D:\Coding\beta", 50.0),
             ("33333333-3333-3333-3333-333333333333", "add the parser", r"D:\Coding\alpha", 6.0),
         ],
@@ -190,7 +190,7 @@ def test_scan_extracts_metadata(root: Path) -> None:
     assert alpha.git_branch == "main"
     assert alpha.version == "2.1.257"
     assert alpha.turns == 1, "slash commands must not count as user turns"
-    assert alpha.last_prompt == "почини тесты"
+    assert alpha.last_prompt == "fix the naïve café parser"
     assert alpha.label == "alpha"
     assert alpha.agent is revenant.CLAUDE_CODE
     assert alpha.resume_command.endswith(alpha.session_id)
@@ -398,7 +398,7 @@ def test_min_turns_drops_empty_sessions(root: Path) -> None:
     _history(
         root,
         [
-            ("11111111-1111-1111-1111-111111111111", "почини тесты", r"D:\Coding\alpha", 2.0),
+            ("11111111-1111-1111-1111-111111111111", "fix the naïve café parser", r"D:\Coding\alpha", 2.0),
             ("55555555-5555-5555-5555-555555555555", "/model", r"D:\Coding\gamma", 1.0),
         ],
     )

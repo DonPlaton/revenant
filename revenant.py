@@ -150,7 +150,7 @@ def parse_when(value: str, *, now: datetime | None = None) -> datetime:
         amount, unit = float(match.group(1)), match.group(2).lower()
         return now - timedelta(seconds=amount * _DURATION_UNITS[unit])
 
-    if text.lower() in {"today", "сегодня"}:
+    if text.lower() == "today":
         midnight = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
         return midnight.astimezone(timezone.utc)
     if text.lower() in {"all", "any", "forever"}:
