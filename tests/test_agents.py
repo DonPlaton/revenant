@@ -17,8 +17,8 @@ import revenant  # noqa: E402
 
 
 NOW = datetime.now(timezone.utc)
-SESSION_A = "01a00718-2757-7f42-b937-58d92827df7c"
-SESSION_B = "01a00719-1111-7f42-b937-58d92827df7d"
+SESSION_A = "01900000-0000-7000-8000-00000000000a"
+SESSION_B = "01900000-0000-7000-8000-00000000000b"
 
 
 def _rollout(root: Path, session_id: str, cwd: str, prompts: list[str], *, age_hours: float) -> Path:
@@ -176,10 +176,10 @@ def test_codex_sessions_scan_end_to_end(codex_root: Path) -> None:
 
 def test_codex_holds_back_a_session_touched_moments_ago(codex_root: Path) -> None:
     """Codex keeps no registry, so recent activity is the only liveness signal."""
-    fresh = _rollout(codex_root, "01a0071a-2222-7f42-b937-58d92827df7e", "/home/me/hot", ["go"], age_hours=0)
+    fresh = _rollout(codex_root, "01900000-0000-7000-8000-00000000000c", "/home/me/hot", ["go"], age_hours=0)
     os.utime(fresh, None)
     found = {s.session_id: s for s in revenant.scan_sessions(codex_root, since=revenant.parse_when("7d"), agent=agents.AGENTS["codex"])}
-    hot = found["01a0071a-2222-7f42-b937-58d92827df7e"]
+    hot = found["01900000-0000-7000-8000-00000000000c"]
     assert hot.is_live
     assert hot.live_reason == "active moments ago"
     assert not found[SESSION_A].is_live
@@ -194,7 +194,7 @@ def test_a_cold_codex_session_is_revivable(codex_root: Path) -> None:
 def test_codex_survives_a_rollout_without_meta(codex_root: Path) -> None:
     broken = codex_root / "sessions" / "2026" / "01" / "01"
     broken.mkdir(parents=True)
-    (broken / "rollout-2026-01-01T00-00-00-0000ffff-3333-7f42-b937-58d92827df7f.jsonl").write_text(
+    (broken / "rollout-2026-01-01T00-00-00-01900000-0000-7000-8000-00000000000d.jsonl").write_text(
         "not json\n", encoding="utf-8"
     )
     found = revenant.scan_sessions(codex_root, since=revenant.parse_when("all"), agent=agents.AGENTS["codex"])
