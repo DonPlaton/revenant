@@ -54,11 +54,16 @@ def test_payload_leaves_a_shell_behind() -> None:
 # --------------------------------------------------------------------------- #
 
 
+def _is_wt(argv: list[str], window: str) -> bool:
+    """argv[0] is a resolved path, not the literal alias, so compare the name."""
+    return Path(argv[0]).name.lower() == "wt.exe" and argv[1:3] == ["-w", window]
+
+
 def test_windows_terminal_makes_one_window_of_tabs() -> None:
     plan = terminals.WindowsTerminal().plan(WINDOWS_JOBS)
     assert len(plan.commands) == 1
     argv = plan.commands[0]
-    assert argv[:3] == ["wt.exe", "-w", "new"]
+    assert _is_wt(argv, "new")
     assert argv.count("new-tab") == 2
     assert argv.count(";") == 1
     assert r"D:\Coding\it's here" in argv
@@ -66,7 +71,7 @@ def test_windows_terminal_makes_one_window_of_tabs() -> None:
 
 def test_windows_terminal_honours_window_and_profile() -> None:
     argv = terminals.WindowsTerminal().plan(WINDOWS_JOBS, window="0", profile="Ubuntu").commands[0]
-    assert argv[:3] == ["wt.exe", "-w", "0"]
+    assert _is_wt(argv, "0")
     assert argv.count("-p") == 2
 
 
@@ -329,8 +334,8 @@ def test_launch_moves_on_when_a_terminal_refuses_to_start(
             return terminals.Plan(self.key, [["echo", job.label] for job in jobs])
 
     broken, works = Broken(), Works()
-    monkeypatch.setattr(terminals, "choose", lambda preferred=None: broken)
-    monkeypatch.setattr(terminals, "fallbacks", lambda after: [works])
+    monkeypatch.setattr(terminals, "choose", lambda preferred=None, **_: broken)
+    monkeypatch.setattr(terminals, "fallbacks", lambda after, **_: [works])
     monkeypatch.setattr(terminals, "run", lambda plan: (0, "denied") if plan.terminal == "broken" else (1, ""))
 
     session = revenant.Session(
@@ -356,10 +361,10 @@ def test_a_pinned_terminal_is_not_second_guessed(
         def plan(self, jobs, **_):
             return terminals.Plan(self.key, [["nope"]])
 
-    monkeypatch.setattr(terminals, "choose", lambda preferred=None: Broken())
+    monkeypatch.setattr(terminals, "choose", lambda preferred=None, **_: Broken())
     monkeypatch.setattr(terminals, "run", lambda plan: (0, "denied"))
     called = []
-    monkeypatch.setattr(terminals, "fallbacks", lambda after: called.append(after) or [])
+    monkeypatch.setattr(terminals, "fallbacks", lambda after, **_: called.append(after) or [])
 
     session = revenant.Session(
         session_id="abc", transcript=Path("x.jsonl"), project_slug="s", cwd=Path("/tmp/x")

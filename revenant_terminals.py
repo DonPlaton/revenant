@@ -24,6 +24,14 @@ EARLY_EXIT_GRACE = 1.0
 WINDOWS = os.name == "nt"
 MACOS = sys.platform == "darwin"
 
+#: Where the revived sessions land. Every backend can do `windows`; the ones that
+#: can script a tab say so, and the rest degrade to windows with a note rather
+#: than refusing to open anything.
+LAYOUT_TABS = "tabs"
+LAYOUT_WINDOWS = "windows"
+LAYOUTS = (LAYOUT_TABS, LAYOUT_WINDOWS)
+DEFAULT_LAYOUT = LAYOUT_TABS
+
 
 @dataclass(frozen=True)
 class Job:
@@ -50,6 +58,10 @@ class Plan:
     #: Commands that set the stage rather than open a window, so counting them
     #: would report more terminals than the user can see.
     overhead: frozenset[int] = frozenset()
+    #: What this plan actually does, which is not always what was asked for: a
+    #: backend that cannot script tabs reports `windows` here and says so in the
+    #: note, so the caller never claims to have opened tabs that do not exist.
+    layout: str = LAYOUT_WINDOWS
 
     def directory(self, index: int) -> str:
         return self.cwds[index] if index < len(self.cwds) else ""
@@ -83,6 +95,42 @@ def _powershell() -> str:
     return "pwsh" if shutil.which("pwsh") else "powershell"
 
 
+#: Store package identities for Windows Terminal, stable first.
+WT_PACKAGES = (
+    "Microsoft.WindowsTerminal_8wekyb3d8bbwe",
+    "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe",
+)
+
+
+def windows_terminal_binary() -> str | None:
+    """The wt.exe that can actually be started, or None.
+
+    `wt.exe` sitting directly in WindowsApps is an app-execution alias, and
+    starting it fails with ERROR_CANT_ACCESS_FILE (1920) on machines where the
+    alias is switched off or its reparse point does not resolve for the calling
+    process - with Windows Terminal installed and working perfectly by hand. The
+    package's own folder beside it holds a second entry point with neither
+    problem, so that one is tried first and the alias is only the fallback.
+    """
+    if not WINDOWS:
+        return None
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        apps = Path(local) / "Microsoft" / "WindowsApps"
+        for package in WT_PACKAGES:
+            candidate = apps / package / "wt.exe"
+            if candidate.is_file():
+                return str(candidate)
+    return shutil.which("wt.exe") or shutil.which("wt")
+
+
+#: How a backend describes what it did when it could not do what was asked.
+_INSTEAD = {
+    LAYOUT_WINDOWS: "opened one window per session",
+    LAYOUT_TABS: "opened one tab per session",
+}
+
+
 class Terminal:
     """A way of opening terminals. Subclasses build the argv."""
 
@@ -90,8 +138,26 @@ class Terminal:
     label = "Terminal"
     #: Platforms this backend can run on: any of "nt", "darwin", "linux".
     platforms: tuple[str, ...] = ()
-    #: True when every job lands in one window as tabs.
-    tabs = False
+    #: Layouts this backend can actually produce. A window per session is the one
+    #: thing every terminal in existence can do, so it is the floor.
+    layouts: tuple[str, ...] = (LAYOUT_WINDOWS,)
+
+    @property
+    def tabs(self) -> bool:
+        """True when this backend can put every session in one window."""
+        return LAYOUT_TABS in self.layouts
+
+    def settle(self, layout: str | None) -> str:
+        """The layout this backend will really use for the one that was asked for."""
+        wanted = layout or DEFAULT_LAYOUT
+        return wanted if wanted in self.layouts else self.layouts[0]
+
+    def demoted(self, layout: str | None) -> str:
+        """The note to show when the asked-for layout is not on offer here."""
+        wanted = layout or DEFAULT_LAYOUT
+        if wanted in self.layouts:
+            return ""
+        return f"{self.label} cannot open {wanted}; {_INSTEAD[self.layouts[0]]}."
 
     def supported(self) -> bool:
         here = "nt" if WINDOWS else ("darwin" if MACOS else "linux")
@@ -113,22 +179,45 @@ class WindowsTerminal(Terminal):
     key = "wt"
     label = "Windows Terminal"
     platforms = ("nt",)
-    tabs = True
+    layouts = (LAYOUT_TABS, LAYOUT_WINDOWS)
 
     def available(self) -> bool:
-        return self.supported() and bool(shutil.which("wt.exe") or shutil.which("wt"))
+        return self.supported() and bool(windows_terminal_binary())
 
-    def plan(self, jobs: list[Job], *, window: str = "new", profile: str | None = None, **_) -> Plan:
-        argv: list[str] = ["wt.exe", "-w", window]
+    def plan(
+        self,
+        jobs: list[Job],
+        *,
+        layout: str | None = None,
+        window: str = "new",
+        profile: str | None = None,
+        **_,
+    ) -> Plan:
         shell = _powershell()
+        binary = windows_terminal_binary() or "wt.exe"
+
+        def tab(job: Job) -> list[str]:
+            argv = ["new-tab", "--title", job.label, "-d", job.cwd]
+            if profile:
+                argv += ["-p", profile]
+            return argv + [shell, "-NoExit", "-Command", job.command]
+
+        if self.settle(layout) == LAYOUT_WINDOWS:
+            # `-w new` is what makes each call a window of its own, so it overrides
+            # the target window here: honouring `--window 0` would quietly merge
+            # them back into tabs, which is the layout the caller just declined.
+            return Plan(
+                self.key,
+                [[binary, "-w", "new", *tab(job)] for job in jobs],
+                layout=LAYOUT_WINDOWS,
+            )
+
+        argv: list[str] = [binary, "-w", window]
         for index, job in enumerate(jobs):
             if index:
                 argv.append(";")
-            argv += ["new-tab", "--title", job.label, "-d", job.cwd]
-            if profile:
-                argv += ["-p", profile]
-            argv += [shell, "-NoExit", "-Command", job.command]
-        return Plan(self.key, [argv])
+            argv += tab(job)
+        return Plan(self.key, [argv], layout=LAYOUT_TABS)
 
 
 class WindowsConsole(Terminal):
@@ -142,7 +231,7 @@ class WindowsConsole(Terminal):
     label = "Windows console"
     platforms = ("nt",)
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
         """Spawn the shell directly, each in a console of its own.
 
         Going through `cmd /c start` sent the directory as one token of a command
@@ -155,8 +244,10 @@ class WindowsConsole(Terminal):
         return Plan(
             self.key,
             [[shell, "-NoExit", "-Command", job.command] for job in jobs],
+            self.demoted(layout),
             cwds=[job.cwd for job in jobs],
             new_console=True,
+            layout=LAYOUT_WINDOWS,
         )
 
 
@@ -169,7 +260,7 @@ class ITerm2(Terminal):
     key = "iterm2"
     label = "iTerm2"
     platforms = ("darwin",)
-    tabs = True
+    layouts = (LAYOUT_TABS, LAYOUT_WINDOWS)
 
     def available(self) -> bool:
         return self.supported() and any(
@@ -177,31 +268,52 @@ class ITerm2(Terminal):
             for p in ("/Applications/iTerm.app", Path.home() / "Applications/iTerm.app")
         )
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
-        lines = ['tell application "iTerm2"', "  activate", "  set w to (create window with default profile)"]
-        for index, job in enumerate(jobs):
-            payload = _applescript_string(_posix_payload(job))
-            if index == 0:
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
+        chosen = self.settle(layout)
+        lines = ['tell application "iTerm2"', "  activate"]
+        if chosen == LAYOUT_WINDOWS:
+            for job in jobs:
+                payload = _applescript_string(_posix_payload(job))
+                lines.append("  set w to (create window with default profile)")
                 lines.append(f"  tell current session of w to write text {payload}")
-            else:
-                lines.append("  tell w")
-                lines.append("    set t to (create tab with default profile)")
-                lines.append(f"    tell current session of t to write text {payload}")
-                lines.append("  end tell")
+        else:
+            lines.append("  set w to (create window with default profile)")
+            for index, job in enumerate(jobs):
+                payload = _applescript_string(_posix_payload(job))
+                if index == 0:
+                    lines.append(f"  tell current session of w to write text {payload}")
+                else:
+                    lines.append("  tell w")
+                    lines.append("    set t to (create tab with default profile)")
+                    lines.append(f"    tell current session of t to write text {payload}")
+                    lines.append("  end tell")
         lines.append("end tell")
-        return Plan(self.key, [["osascript", "-e", "\n".join(lines)]])
+        return Plan(self.key, [["osascript", "-e", "\n".join(lines)]], layout=chosen)
 
 
 class MacTerminal(Terminal):
+    """One window per session.
+
+    Terminal.app exposes no way to make a tab from AppleScript; the usual trick is
+    to have System Events press Command-T, which asks the user for accessibility
+    permission and then types into whatever is frontmost. Not worth it: anyone who
+    wants tabs on macOS has iTerm2, which scripts them properly.
+    """
+
     key = "terminal-app"
     label = "Terminal.app"
     platforms = ("darwin",)
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
         lines = ['tell application "Terminal"', "  activate"]
         lines += [f"  do script {_applescript_string(_posix_payload(job))}" for job in jobs]
         lines.append("end tell")
-        return Plan(self.key, [["osascript", "-e", "\n".join(lines)]])
+        return Plan(
+            self.key,
+            [["osascript", "-e", "\n".join(lines)]],
+            self.demoted(layout),
+            layout=LAYOUT_WINDOWS,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -213,25 +325,28 @@ class GnomeTerminal(Terminal):
     key = "gnome-terminal"
     label = "GNOME Terminal"
     platforms = ("linux",)
-    tabs = True
+    layouts = (LAYOUT_TABS, LAYOUT_WINDOWS)
 
     def available(self) -> bool:
         return self.supported() and bool(shutil.which("gnome-terminal"))
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
-        """One call per tab.
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
+        """One call per tab, or per window.
 
         `--` ends option parsing for the whole command line, so a single call can
         carry only one command and the remaining tabs would open empty. Calling
         gnome-terminal once per job is the documented way: `--tab` opens a tab in
-        the last-opened window, so they still land together.
+        the last-opened window, so they still land together, and `--window` is the
+        same call with each one on its own instead.
         """
+        chosen = self.settle(layout)
+        where = "--tab" if chosen == LAYOUT_TABS else "--window"
         return Plan(
             self.key,
             [
                 [
                     "gnome-terminal",
-                    "--tab",
+                    where,
                     f"--title={job.label}",
                     f"--working-directory={job.cwd}",
                     "--",
@@ -241,6 +356,7 @@ class GnomeTerminal(Terminal):
                 ]
                 for job in jobs
             ],
+            layout=chosen,
         )
 
 
@@ -248,18 +364,22 @@ class Konsole(Terminal):
     key = "konsole"
     label = "Konsole"
     platforms = ("linux",)
-    tabs = True
+    layouts = (LAYOUT_TABS, LAYOUT_WINDOWS)
 
     def available(self) -> bool:
         return self.supported() and bool(shutil.which("konsole"))
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
+        chosen = self.settle(layout)
+        # Without --new-tab konsole opens a window, which is exactly the other half.
+        where = ["--new-tab"] if chosen == LAYOUT_TABS else []
         return Plan(
             self.key,
             [
-                ["konsole", "--new-tab", "--workdir", job.cwd, "-e", "sh", "-c", _posix_payload(job)]
+                ["konsole", *where, "--workdir", job.cwd, "-e", "sh", "-c", _posix_payload(job)]
                 for job in jobs
             ],
+            layout=chosen,
         )
 
 
@@ -267,12 +387,28 @@ class XfceTerminal(Terminal):
     key = "xfce4-terminal"
     label = "Xfce Terminal"
     platforms = ("linux",)
-    tabs = True
+    layouts = (LAYOUT_TABS, LAYOUT_WINDOWS)
 
     def available(self) -> bool:
         return self.supported() and bool(shutil.which("xfce4-terminal"))
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
+        chosen = self.settle(layout)
+        if chosen == LAYOUT_WINDOWS:
+            return Plan(
+                self.key,
+                [
+                    [
+                        "xfce4-terminal",
+                        f"--title={job.label}",
+                        f"--working-directory={job.cwd}",
+                        f"--command=sh -c {shlex.quote(_posix_payload(job))}",
+                    ]
+                    for job in jobs
+                ],
+                layout=chosen,
+            )
+
         argv = ["xfce4-terminal"]
         for job in jobs:
             argv += [
@@ -281,7 +417,7 @@ class XfceTerminal(Terminal):
                 f"--working-directory={job.cwd}",
                 f"--command=sh -c {shlex.quote(_posix_payload(job))}",
             ]
-        return Plan(self.key, [argv])
+        return Plan(self.key, [argv], layout=chosen)
 
 
 class _SimpleUnixTerminal(Terminal):
@@ -295,12 +431,12 @@ class _SimpleUnixTerminal(Terminal):
     def available(self) -> bool:
         return self.supported() and bool(shutil.which(self.binary))
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
         commands = []
         for job in jobs:
             argv = [self.binary, *self.directory_flag, job.cwd, *self.command_flag]
             commands.append(argv + ["sh", "-c", _posix_payload(job)])
-        return Plan(self.key, commands)
+        return Plan(self.key, commands, self.demoted(layout), layout=LAYOUT_WINDOWS)
 
 
 class Kitty(_SimpleUnixTerminal):
@@ -331,7 +467,7 @@ class Ghostty(_SimpleUnixTerminal):
     label = "Ghostty"
     binary = "ghostty"
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
         return Plan(
             self.key,
             [
@@ -346,6 +482,8 @@ class Ghostty(_SimpleUnixTerminal):
                 ]
                 for job in jobs
             ],
+            self.demoted(layout),
+            layout=LAYOUT_WINDOWS,
         )
 
 
@@ -365,10 +503,12 @@ class Xterm(Terminal):
     def available(self) -> bool:
         return self.supported() and bool(shutil.which("xterm"))
 
-    def plan(self, jobs: list[Job], **_) -> Plan:
+    def plan(self, jobs: list[Job], *, layout: str | None = None, **_) -> Plan:
         return Plan(
             self.key,
             [["xterm", "-T", job.label, "-e", "sh", "-c", _posix_payload(job)] for job in jobs],
+            self.demoted(layout),
+            layout=LAYOUT_WINDOWS,
         )
 
 
@@ -382,7 +522,9 @@ class Tmux(Terminal):
     key = "tmux"
     label = "tmux"
     platforms = ("linux", "darwin", "nt")
-    tabs = True
+    #: tmux windows are the tabs, and it has no windows of its own to open: the
+    #: emulator hosting it owns those. Asking for windows here gets tabs and a note.
+    layouts = (LAYOUT_TABS,)
 
     def available(self) -> bool:
         return bool(shutil.which("tmux"))
@@ -391,7 +533,9 @@ class Tmux(Terminal):
     #: matching it. Only ever created by the ensure step below.
     BOOT_WINDOW = "revenant-boot"
 
-    def plan(self, jobs: list[Job], *, session: str = "revenant", **_) -> Plan:
+    def plan(
+        self, jobs: list[Job], *, layout: str | None = None, session: str = "revenant", **_
+    ) -> Plan:
         """Make sure the session exists, then add one window per job.
 
         Creating the session with the first job in it looked tidier, but
@@ -424,8 +568,15 @@ class Tmux(Terminal):
             overhead.add(len(commands) - 1)
 
         note = "" if inside else f"Attach with: tmux attach -t {session}"
+        aside = self.demoted(layout)
+        note = f"{aside} {note}".strip() if aside else note
         return Plan(
-            self.key, commands, note, optional=frozenset(optional), overhead=frozenset(overhead)
+            self.key,
+            commands,
+            note,
+            optional=frozenset(optional),
+            overhead=frozenset(overhead),
+            layout=LAYOUT_TABS,
         )
 
 
@@ -459,8 +610,14 @@ def here() -> str:
     return "nt" if WINDOWS else ("darwin" if MACOS else "linux")
 
 
-def choose(preferred: str | None = None) -> Terminal:
-    """Pick a terminal: the requested one, tmux when we are already inside it, or the best available."""
+def choose(preferred: str | None = None, *, layout: str | None = None) -> Terminal:
+    """Pick a terminal: the requested one, tmux when we are already inside it, or the best available.
+
+    With no name given, a backend that can produce the asked-for layout wins over
+    one earlier in the order that cannot. Preference, not a requirement: if no
+    installed terminal can do it, the usual first choice still opens the sessions
+    and says in its note what it did instead.
+    """
     if preferred:
         try:
             terminal = BY_KEY[preferred]()
@@ -469,28 +626,47 @@ def choose(preferred: str | None = None) -> Terminal:
             raise SystemExit(f"Unknown terminal {preferred!r}. Known: {known}") from None
         return terminal
 
+    # Inside tmux the emulator is not ours to drive, so tmux wins whatever the
+    # layout: opening GUI windows from a session that may be on the far end of an
+    # SSH connection puts them on the wrong machine.
     if os.environ.get("TMUX") and Tmux().available():
         return Tmux()
-    for candidate in ORDER.get(here(), ()):
-        terminal = candidate()
-        if terminal.available():
+
+    installed = [t for t in (cls() for cls in ORDER.get(here(), ())) if t.available()]
+    wanted = layout or DEFAULT_LAYOUT
+    for terminal in installed:
+        if wanted in terminal.layouts:
             return terminal
+    if installed:
+        return installed[0]
     if Tmux().available():
         return Tmux()
     return WindowsConsole() if WINDOWS else Xterm()
 
 
-def fallbacks(after: Terminal) -> list[Terminal]:
+def fallbacks(after: Terminal, *, layout: str | None = None) -> list[Terminal]:
     """Backends worth trying when `after` refuses to start.
 
     Windows Terminal is the case that matters: it is a Store app-execution alias
     inside an ACL-locked folder, so it can be present, look available, and still
     fail with an access error the moment it is run.
     """
-    order = [cls() for cls in ORDER.get(here(), ())]
-    if Tmux not in ORDER.get(here(), ()):
-        order.append(Tmux())
-    seen = [t for t in order if t.key != after.key and t.available()]
+    here_now = ORDER.get(here(), ())
+    seen = [t for t in (cls() for cls in here_now) if t.key != after.key and t.available()]
+
+    wanted = layout or DEFAULT_LAYOUT
+    # A terminal that can honour the layout goes first, but none is dropped: the
+    # point of a fallback is that something opens. `sort` is stable, so the usual
+    # order survives inside each group.
+    seen.sort(key=lambda t: wanted not in t.layouts)
+
+    # tmux stays last whatever the layout. It is the backend of last resort here:
+    # on a desktop, dropping the sessions into a detached session nobody asked to
+    # attach to looks exactly like nothing happening.
+    if Tmux not in here_now:
+        spare = Tmux()
+        if spare.key != after.key and spare.available():
+            seen.append(spare)
     return seen
 
 

@@ -449,7 +449,8 @@ def test_render_commands_cmd_and_bash(root: Path) -> None:
 def test_render_launcher_makes_one_wt_call(root: Path) -> None:
     sessions = revenant.filter_sessions(revenant.scan_sessions(root, since=revenant.parse_when("7d")))
     script = revenant.render_launcher(sessions, shell="pwsh")
-    assert script.count("wt.exe -w 'new'") == 1, "all sessions must land as tabs in one window"
+    assert script.count("& $wt -w 'new'") == 1, "all sessions must land as tabs in one window"
+    assert "Microsoft.WindowsTerminal_8wekyb3d8bbwe" in script, "the alias is not always runnable"
     assert script.count("new-tab") == len(sessions)
     assert script.count("`;") == len(sessions) - 1
     assert "Start-Process" in script, "must degrade gracefully when wt.exe is unavailable"
@@ -485,7 +486,7 @@ def test_windows_terminal_argv_shape(root: Path) -> None:
     plan = terminals.WindowsTerminal().plan([s.job() for s in sessions])
     assert len(plan.commands) == 1, "all tabs belong to one window"
     argv = plan.commands[0]
-    assert argv[:3] == ["wt.exe", "-w", "new"]
+    assert Path(argv[0]).name.lower() == "wt.exe" and argv[1:3] == ["-w", "new"]
     assert argv.count("new-tab") == len(sessions)
     assert argv.count(";") == len(sessions) - 1
     for session in sessions:

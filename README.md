@@ -26,8 +26,8 @@ to your clipboard for you to paste yourself. Nine sessions is nine trips through
 terminals you open by hand. Codex has no picker that spans directories at all.
 
 Revenant lists every session that was active in a window you choose, across every directory and
-both agents, and opens the ones you pick: each in its own tab, already in its own directory,
-already resumed.
+both agents, and opens the ones you pick: each in its own tab, or its own window if you prefer,
+already in its own directory, already resumed.
 
 <div align="center">
 
@@ -102,7 +102,7 @@ To pass a flag through the one-liner:
 curl -fsSL https://raw.githubusercontent.com/DonPlaton/revenant/main/install.sh | bash -s -- --native-window --cli
 ```
 
-`--cli` puts `revenant` on your PATH. `--ref v1.2.0` (`-Ref` on Windows) installs a specific
+`--cli` puts `revenant` on your PATH. `--ref v1.3.0` (`-Ref` on Windows) installs a specific
 version rather than the current main.
 
 On Windows it registers itself under Settings, Apps, so you can remove it there like anything
@@ -127,16 +127,23 @@ python revenant.py --since 7d
 
 ## Using it
 
-The app has two controls: a caret for how far back to look, and REVIVE. Click a row to mark or
-unmark it, double click it (or press `O` with it focused) to open its folder. `Enter` revives what
-is marked, `Ctrl+R` rescans, `Esc` closes. Everything is reachable from the keyboard.
+The app has three controls: a caret for how far back to look, a switch for where the sessions come
+back **into**, and REVIVE. Click a row to mark or unmark it, double click it (or press `O` with it
+focused) to open its folder. `Enter` revives what is marked, `Ctrl+R` rescans, `Esc` closes.
+Everything is reachable from the keyboard.
+
+**One window, or separate windows.** By default every session comes back as a tab of a single
+window, which is what you want when you are picking up nine at once. Switch to *separate windows*
+when you would rather have them side by side on the screen, or across two monitors. The app
+remembers the choice.
 
 The command line does the same and more:
 
 ```bash
 revenant                        # what was alive in the last 24 hours
 revenant --since 7d --pick      # choose from the last week: 1,3,5 or 2-4 or all
-revenant --since 6h --launch    # reopen each in its own terminal tab
+revenant --since 6h --launch    # reopen them as tabs of one window
+revenant --launch --layout windows  # a terminal window per session instead
 revenant --all-agents           # every agent installed on this machine
 revenant --print                # paste-ready cd and resume command pairs
 revenant --emit revive.sh       # a launcher script you can rerun any time
@@ -174,6 +181,7 @@ Acting on them:
 | `--emit FILE` | write a launcher script; `.ps1`, `.sh` and `.cmd` pick their own syntax |
 | `--launch` | open the sessions now |
 | `--terminal <key>` | where to open them, from `revenant terminals` |
+| `--layout tabs\|windows` | tabs of one window (default), or a window per session |
 | `--pick` | choose interactively before acting |
 | `--dry-run` | with `--launch`, print the commands instead of running them |
 | `--json` | machine-readable output |
@@ -186,15 +194,25 @@ Acting on them:
 Revenant picks the best terminal it can find, and `--terminal` overrides it. Being inside tmux
 wins over everything, which is what you want over SSH.
 
-| platform | tabs in one window | one window each |
-|---|---|---|
-| Windows | Windows Terminal, tmux | the console |
-| macOS | iTerm2, tmux | Terminal.app, kitty, WezTerm, Ghostty, Alacritty |
-| Linux | GNOME Terminal, Konsole, Xfce Terminal, tmux | kitty, WezTerm, Ghostty, Alacritty, foot, xterm |
+`--layout` says how they should land. Most terminals can do both; the ones that cannot say so and
+open windows anyway, rather than refusing.
 
-Windows Terminal can be installed, look available, and still refuse to run, because it is a Store
-alias inside a folder some shells are denied access to. Revenant notices and moves to the next
-terminal on the list rather than failing.
+| platform | can do either | one window each, only |
+|---|---|---|
+| Windows | Windows Terminal | the console |
+| macOS | iTerm2 | Terminal.app, kitty, WezTerm, Ghostty, Alacritty |
+| Linux | GNOME Terminal, Konsole, Xfce Terminal | kitty, WezTerm, Ghostty, Alacritty, foot, xterm |
+| anywhere | tmux, whose windows are the tabs | |
+
+When the layout matters more than the terminal, Revenant will reach past its usual first choice for
+one that can honour it: asking for tabs on a machine with both kitty and Konsole gets you Konsole.
+Name a terminal with `--terminal` and that preference stops; you get what you asked for.
+
+Windows Terminal can be installed, working, and still refuse to start, because `wt.exe` in
+`WindowsApps` is an app-execution alias that fails with `ERROR_CANT_ACCESS_FILE` whenever the alias
+is switched off or its reparse point will not resolve for the calling process. Revenant looks for
+the copy inside the package's own folder first, which has neither problem, and falls back to the
+next terminal on the list if even that will not run.
 
 ## Agents
 
@@ -314,10 +332,11 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-207 tests, no network, no real session touched. Everything runs against a synthetic config
+284 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
-terminal backends on all three platforms, quoting of paths with spaces and apostrophes, corrupt
+terminal backends against both layouts on all three platforms, quoting of paths with spaces and
+apostrophes, corrupt
 and truncated transcripts, the desktop backend's token, host and traversal guards, and the read
 only guarantee.
 
