@@ -161,6 +161,15 @@ input[type=range]{position:relative;width:100%;height:26px;margin:0;background:n
 .plain{font-size:11.5px;color:var(--ink-2);border-bottom:1px solid var(--rule);padding-bottom:1px;
   transition:color 140ms var(--ease),border-color 140ms var(--ease)}
 .plain:hover{color:var(--ink);border-bottom-color:var(--ember)}
+.mode{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.mode-label{font-size:10px;letter-spacing:.16em;color:var(--ink-3);white-space:nowrap}
+.segs{display:flex;border:1px solid var(--rule)}
+.seg{font-size:11px;letter-spacing:.05em;color:var(--ink-3);padding:4px 11px;white-space:nowrap;
+  transition:color 140ms var(--ease),background 140ms var(--ease),box-shadow 140ms var(--ease)}
+.seg:hover{color:var(--ink-2)}
+.seg[aria-pressed=true]{color:var(--ink);background:var(--ember-dim);
+  box-shadow:inset 0 -1px 0 var(--ember)}
+@media (max-width:900px){.mode-label{display:none}}
 .raise{
   background:var(--ember);color:#1c1a18;padding:11px 26px;font-size:12px;letter-spacing:.26em;
   font-weight:500;transition:background 140ms var(--ease),transform 90ms var(--ease);
@@ -233,6 +242,15 @@ html[data-still] .sweep{display:none}
 
   <div class="bar">
     <span class="tally" id="tally"></span>
+    <div class="mode">
+      <span class="mode-label">BRING BACK INTO</span>
+      <div class="segs" id="segs" role="group" aria-label="Where the sessions open">
+        <button type="button" class="seg" data-layout="tabs" aria-pressed="true"
+                title="Every session as a tab of one window">one window</button>
+        <button type="button" class="seg" data-layout="windows" aria-pressed="false"
+                title="Every session in a window of its own">separate windows</button>
+      </div>
+    </div>
     <button class="plain" id="markall">mark all</button>
     <button class="plain" id="copy">copy commands</button>
     <button class="raise" id="raise" disabled>REVIVE</button>
@@ -266,13 +284,40 @@ html[data-still] .sweep{display:none}
   const el = {
     range: $("range"), lit: $("lit"), caret: $("caret"), ticks: $("ticks"), marks: $("marks"),
     span: $("span"), rows: $("rows"), register: $("register"), claim: $("claim"), where: $("where"),
-    tally: $("tally"), raise: $("raise"), word: $("word"), tabs: $("tabs"),
+    tally: $("tally"), raise: $("raise"), word: $("word"), tabs: $("tabs"), segs: $("segs"),
   };
 
   let sessions = [];
   let chosen = new Set();
   let agent = "";
   let seq = 0;
+
+  // ── where the sessions land ───────────────────────────────────────────
+  const LAYOUTS = ["tabs", "windows"];
+  const LAYOUT_KEY = "revenant.layout";
+  // Reading storage throws outright in a browser set to block site data, and the
+  // app has to open anyway, so a failure here just means the default.
+  const kept = (() => {
+    try { return localStorage.getItem(LAYOUT_KEY); } catch (e) { return null; }
+  })();
+  let layout = LAYOUTS.includes(kept) ? kept : "tabs";
+
+  function paintMode() {
+    for (const node of el.segs.children) {
+      node.setAttribute("aria-pressed", String(node.dataset.layout === layout));
+    }
+  }
+  el.segs.addEventListener("click", (event) => {
+    const node = event.target.closest("[data-layout]");
+    if (!node || node.dataset.layout === layout) return;
+    layout = node.dataset.layout;
+    try { localStorage.setItem(LAYOUT_KEY, layout); } catch (e) { /* not worth a word */ }
+    paintMode();
+    word(layout === "tabs"
+      ? "They will come back as tabs of one window."
+      : "They will come back in windows of their own.");
+  });
+  paintMode();
 
   const api = (path, options) =>
     fetch(path + (path.includes("?") ? "&" : "?") + "t=" + encodeURIComponent(TOKEN), options)
@@ -542,7 +587,7 @@ html[data-still] .sweep{display:none}
       result = await api("/api/revive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, days: stop().days, agent }),
+        body: JSON.stringify({ ids, days: stop().days, agent, layout }),
       });
     } catch {
       result = { ok: false, message: "The local service did not answer." };

@@ -33,6 +33,7 @@ from urllib.parse import parse_qs, urlparse
 
 import revenant_agents as agent_registry
 import revenant
+import revenant_terminals as terminals
 from revenant import Agent, CLAUDE_CODE
 
 def _ui_dir() -> Path:
@@ -162,7 +163,9 @@ class Backend:
 
     # -- actions ---------------------------------------------------------- #
 
-    def revive(self, ids: list[str], *, days: float, which: str = "") -> dict:
+    def revive(
+        self, ids: list[str], *, days: float, which: str = "", layout: str = ""
+    ) -> dict:
         chosen = self._by_id(ids, days=days, which=which)
         if not chosen:
             return {"ok": False, "message": "Those sessions are no longer on disk.", "count": 0}
@@ -177,7 +180,10 @@ class Backend:
             }
 
         sink = io.StringIO()
-        code = revenant.launch(chosen, stream=sink)
+        # An unknown layout is the UI being out of step with the backend, which is
+        # no reason to refuse the rescue: fall back to the default and open them.
+        wanted = layout if layout in terminals.LAYOUTS else terminals.DEFAULT_LAYOUT
+        code = revenant.launch(chosen, layout=wanted, stream=sink)
         self.invalidate()  # a revived session becomes live as soon as it registers
         note = [line for line in sink.getvalue().strip().splitlines() if line]
         message = " ".join(note[-2:]) if note else ""
@@ -345,7 +351,8 @@ class Handler(BaseHTTPRequestHandler):
         which = str(payload.get("agent", ""))[:40]
 
         if parsed.path == "/api/revive":
-            self._json(self.backend.revive(ids, days=days, which=which))
+            layout = str(payload.get("layout", ""))[:16]
+            self._json(self.backend.revive(ids, days=days, which=which, layout=layout))
         elif parsed.path == "/api/commands":
             self._json(self.backend.commands(ids, days=days, which=which))
         elif parsed.path == "/api/reveal":

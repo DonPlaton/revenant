@@ -83,7 +83,7 @@ def test_everything_running_is_still_a_refusal(capsys: pytest.CaptureFixture[str
 
 def test_the_emitted_windows_launcher_honours_window_and_profile() -> None:
     script = revenant.render_launcher([_session()], shell="pwsh", window="0", profile="Ubuntu")
-    assert "wt.exe -w '0'" in script
+    assert "& $wt -w '0'" in script
     assert "-p 'Ubuntu'" in script
 
 

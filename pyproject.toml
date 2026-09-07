@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "revenant-sessions"
-version = "1.2.0"
+version = "1.3.0"
 description = "Bring your AI coding-agent sessions back from the dead after a crash"
 readme = "README.md"
 requires-python = ">=3.10"
