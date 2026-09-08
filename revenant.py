@@ -620,6 +620,11 @@ def _display_width(text: str) -> int:
     return width
 
 
+def _plural(count: int, word: str) -> str:
+    """Say `1 session` and `3 sessions`, rather than `1 session(s)` at the reader."""
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
 def _pad(text: str, width: int) -> str:
     return text + " " * max(0, width - _display_width(text))
 
@@ -684,7 +689,7 @@ def render_table(sessions: Sequence[Session], *, stream=None, now: datetime | No
 
     live_count = sum(1 for s in sessions if s.is_live)
     print(
-        f"\n{palette.cyan}{len(sessions)} session(s)"
+        f"\n{palette.cyan}{_plural(len(sessions), 'session')}"
         + (f", {live_count} still running" if live_count else "")
         + f".{palette.reset}",
         file=stream,
@@ -938,7 +943,7 @@ def launch(
         # front ends disagreed about the same rule.
         names = ", ".join(f"{s.label} ({s.live_reason})" for s in live)
         print(
-            f"Holding back {len(live)} session(s) that may still be running: {names}.\n"
+            f"Holding back {_plural(len(live), 'session')} that may still be running: {names}.\n"
             "Two processes on one transcript corrupt it. Close them and run this again.",
             file=stream,
         )
@@ -974,7 +979,7 @@ def launch(
     tabbed = plan.layout == terminals.LAYOUT_TABS
     where = "tab" if tabbed else "window"
     count = len(usable) if tabbed and len(plan.commands) == 1 else opened
-    print(f"Opened {count} {where}(s) in {chosen.label}.", file=stream)
+    print(f"Opened {_plural(count, where)} in {chosen.label}.", file=stream)
     if message:
         print(message, file=stream)
     return 0
@@ -1192,7 +1197,7 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
             return 1
         payload = write_snapshot(root, agent=agent)
         print(
-            f"Recorded {len(payload['sessions'])} running session(s) to "
+            f"Recorded {_plural(len(payload['sessions']), 'running session')} to "
             f"{snapshot_path(root, agent=agent)}",
             file=stream,
         )
@@ -1282,7 +1287,7 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
         )
         if emit_shell == "bash":
             target.chmod(target.stat().st_mode | 0o111)
-        print(f"\nWrote {target} ({len(selected)} session(s)). Run it to bring them back.", file=stream)
+        print(f"\nWrote {target} ({_plural(len(selected), 'session')}). Run it to bring them back.", file=stream)
 
     if args.launch:
         return launch(
@@ -1297,7 +1302,7 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
 
     if not acting:
         print(
-            "\nNext: --print (commands) - --emit revive.sh (script) - --launch (open them) - --pick (choose first)",
+            "\nNext: --print (commands), --emit revive.sh (script), --launch (open them), --pick (choose first)",
             file=stream,
         )
     return 0
