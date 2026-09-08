@@ -62,7 +62,8 @@ The installer downloads the app, checks you have a Python it can use, and leaves
 | macOS | `Revenant.app`, with an icon | `~/Applications`, code in `~/.local/share/revenant` |
 | Linux | an entry in your application menu | `~/.local/share/revenant` |
 
-Nothing runs in the background, nothing starts at login, and no PATH is changed unless you ask.
+Nothing runs in the background and nothing starts at login. The installer touches your PATH only
+if you ask it for the command line tool.
 
 <details>
 <summary><b>Without piping the internet into a shell</b></summary>
@@ -77,7 +78,7 @@ Fair. Download the repository as a zip, or clone it, then:
 - **Linux**: `bash install.sh`
 
 Both scripts behave the same either way. Run from a clone they point the launcher at that folder
-and copy nothing, which is what you want while you are working on it.
+and copy nothing, so an edit you save is an edit the launcher picks up.
 
 </details>
 
@@ -127,15 +128,15 @@ python revenant.py --since 7d
 
 ## Using it
 
-The app has three controls: a caret for how far back to look, a switch for where the sessions come
-back **into**, and REVIVE. Click a row to mark or unmark it, double click it (or press `O` with it
-focused) to open its folder. `Enter` revives what is marked, `Ctrl+R` rescans, `Esc` closes.
-Everything is reachable from the keyboard.
+There are three controls: a caret for how far back to look, a switch for where the sessions land,
+and REVIVE. Click a row to mark or unmark it, double click it (or press `O` with it focused) to
+open its folder. `Enter` revives what is marked, `Ctrl+R` rescans, `Esc` closes. Everything is
+reachable from the keyboard.
 
-**One window, or separate windows.** By default every session comes back as a tab of a single
-window, which is what you want when you are picking up nine at once. Switch to *separate windows*
-when you would rather have them side by side on the screen, or across two monitors. The app
-remembers the choice.
+By default every session comes back as a tab of a single window, so picking up nine at once leaves
+you one window to arrange rather than nine. Switch to *separate windows* when you would rather see
+them side by side, or spread across two monitors. The app remembers the choice, and `--layout` says
+the same thing on the command line.
 
 The command line does the same and more:
 
@@ -192,7 +193,7 @@ Acting on them:
 ## Where sessions reopen
 
 Revenant picks the best terminal it can find, and `--terminal` overrides it. Being inside tmux
-wins over everything, which is what you want over SSH.
+wins over everything, since opening windows on the far end of an SSH session helps nobody.
 
 `--layout` says how they should land. Most terminals can do both; the ones that cannot say so and
 open windows anyway, rather than refusing.
@@ -259,16 +260,17 @@ Measured on 34 transcripts totalling 534 MB, on an eight core desktop:
 | peak Python heap for a full scan | 0.95 MB |
 | the app while you look at it | 0.3% of one core |
 
-Liveness used to cost half a second because it shelled out to `tasklist` and walked all 428
-processes on the machine. It now asks the kernel about the handful of process ids in the registry,
-which takes 0.2 ms. Reading a transcript stops at the first record that answers the question, one
-pass over the end of a file collects both the last prompts and the session's name, and a name
-already read is not read again.
+Liveness is the part that could have been slow. Shelling out to `tasklist` and walking all 428
+processes on the machine costs half a second, so Revenant asks the kernel about the handful of
+process ids in the registry instead, which takes 0.2 ms. Reading a transcript stops at the first
+record that answers the question, one pass over the end of a file collects both the last prompts
+and the session's name, and a name already read is not read again.
 
 The desktop window is a WebView2 or WebKit surface, so it holds around 430 MB while it is open,
 the same as any browser-backed app. It is meant to be opened, used for ten seconds and closed, and
-it takes its processes with it. Nothing stays resident: no tray icon, no service, no autostart. If
-you want the light path, the command line does the same work in 40 ms and about 15 MB.
+it takes its processes with it. Nothing stays resident afterwards, and nothing registers itself to
+start at the next login. If you want the light path, the command line does the same work in 40 ms
+and about 15 MB.
 
 ## Safety
 
@@ -332,13 +334,12 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-284 tests, no network, no real session touched. Everything runs against a synthetic config
+285 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
 terminal backends against both layouts on all three platforms, quoting of paths with spaces and
-apostrophes, corrupt
-and truncated transcripts, the desktop backend's token, host and traversal guards, and the read
-only guarantee.
+apostrophes, corrupt and truncated transcripts, the desktop backend's token, host and traversal
+guards, and the read only guarantee.
 
 Regenerate the images after changing the interface:
 
