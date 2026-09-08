@@ -234,19 +234,19 @@ def _report(monkeypatch: pytest.MonkeyPatch, backend: terminals.Terminal, layout
 
 def test_launch_counts_tabs_as_tabs(monkeypatch: pytest.MonkeyPatch) -> None:
     out = _report(monkeypatch, terminals.WindowsTerminal(), "tabs")
-    assert "Opened 2 tab(s) in Windows Terminal." in out
+    assert "Opened 2 tabs in Windows Terminal." in out
 
 
 def test_launch_counts_windows_as_windows(monkeypatch: pytest.MonkeyPatch) -> None:
     out = _report(monkeypatch, terminals.WindowsTerminal(), "windows")
-    assert "Opened 2 window(s) in Windows Terminal." in out
+    assert "Opened 2 windows in Windows Terminal." in out
 
 
 def test_launch_reports_what_happened_not_what_was_asked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     out = _report(monkeypatch, terminals.Kitty(), "tabs")
-    assert "window(s)" in out and "tab(s)" not in out
+    assert "Opened 2 windows in kitty." in out and "Opened 2 tabs" not in out
     assert "kitty cannot open tabs" in out
 
 

@@ -176,7 +176,7 @@ class Backend:
             return {
                 "ok": False,
                 "count": 0,
-                "message": "Every selected session is still running - nothing to bring back.",
+                "message": "Every session you picked is still running, so there is nothing to bring back.",
             }
 
         sink = io.StringIO()
