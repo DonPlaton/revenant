@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body{margin:0}
+    a{color:#dd7b52}a:hover{color:#e88f68}
+    .sheet{position:relative;width:880px;height:640px;background:#1c1a18;color:#eeeae1;
+      font:13px/1.5 "Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace}
+    .eyebrow{position:absolute;left:44px;top:38px;font-size:10px;letter-spacing:.24em;color:#7a746b}
+    .name{position:absolute;left:44px;top:62px;margin:0;font-weight:400;font-size:30px;
+      font-family:"Iowan Old Style",Palatino,Georgia,serif}
+    .note{position:absolute;left:44px;top:110px;width:300px;margin:0;font-size:12px;line-height:1.7;
+      color:#a9a297}
+    .stage{position:absolute;left:392px;top:150px;width:300px;height:340px}
+    .stage svg{display:block;width:100%;height:100%;overflow:visible}
+    .label{position:absolute;font-size:10.5px;letter-spacing:.05em;color:#eeeae1;white-space:nowrap}
+    .label b{display:block;font-weight:500}
+    .label span{display:block;color:#7a746b;font-size:9.5px;letter-spacing:.02em;margin-top:2px}
+    .lead{position:absolute;background:#35322d;height:1px}
+    .foot{position:absolute;left:44px;bottom:38px;width:790px;font-size:10.5px;color:#7a746b;
+      border-top:1px solid #35322d;padding-top:12px;line-height:1.7}
+  </style>
+</helmet>
+
+<div class="sheet">
+  <p class="eyebrow">CAST, SHEET ONE</p>
+  <h1 class="name">The revenant</h1>
+  <p class="note">The figure on the app icon, redrawn so the parts that carry
+    its life can move on separate clocks. It flees left; everything about the
+    drawing says so, including where it is looking.</p>
+
+  <div class="stage">
+    <svg viewBox="0 0 58 58">
+      <g stroke="#dd7b52" stroke-linecap="round" fill="none" opacity="0.45">
+        <path d="M41 16h8" stroke-width="3"/>
+        <path d="M42 26h10" stroke-width="3.4"/>
+        <path d="M41 34h7" stroke-width="2.6"/>
+      </g>
+      <path fill="#dd7b52" d="M4 42V21C4 10.5 12 2.5 22 2.5S40 10.5 40 21v21z"/>
+      <g fill="#dd7b52">
+        <path d="M4 41.4h7.2L7.6 50z"/>
+        <path d="M11.2 41.4h7.2L14.8 48z"/>
+        <path d="M18.4 41.4h7.2L22 51z"/>
+        <path d="M25.6 41.4h7.2L29.2 48z"/>
+        <path d="M32.8 41.4h7.2L36.4 50z"/>
+      </g>
+      <path fill="#000" opacity="0.16" d="M30 3.6C36 7 40 13.4 40 21v21h-6V21c0-7-1.6-13.2-4-17.4z"/>
+      <path fill="#fff" opacity="0.22" d="M14.6 5.2C11 8.6 9 14.2 9 21v12H6V21c0-6.6 3.2-12.8 8.6-15.8z"/>
+      <ellipse cx="15.4" cy="21.5" rx="5.3" ry="6" fill="#f4efe6"/>
+      <ellipse cx="29.6" cy="21.5" rx="5.3" ry="6" fill="#f4efe6"/>
+      <circle cx="17.8" cy="22.6" r="2.5" fill="#191715"/>
+      <circle cx="32" cy="22.6" r="2.5" fill="#191715"/>
+      <ellipse cx="22.4" cy="33.4" rx="2.5" ry="3" fill="#191715" opacity="0.85"/>
+    </svg>
+  </div>
+
+  <div class="label" style="left:150px;top:250px;text-align:right;width:160px">
+    <b>eyes</b><span>pupils sit back and right,<br>so it watches what follows</span>
+  </div>
+  <div class="lead" style="left:318px;top:262px;width:92px"></div>
+
+  <div class="label" style="left:150px;top:340px;text-align:right;width:160px">
+    <b>mouth</b><span>a held breath, gasping<br>on a slower clock</span>
+  </div>
+  <div class="lead" style="left:318px;top:352px;width:96px"></div>
+
+  <div class="label" style="left:150px;top:452px;text-align:right;width:160px">
+    <b>hem</b><span>five caret peaks, each<br>rippling 80ms behind the last</span>
+  </div>
+  <div class="lead" style="left:318px;top:464px;width:90px"></div>
+
+  <div class="label" style="left:700px;top:196px">
+    <b>form</b><span>a lit leading edge and<br>a shaded trailing one</span>
+  </div>
+  <div class="lead" style="left:640px;top:208px;width:54px"></div>
+
+  <div class="label" style="left:700px;top:318px">
+    <b>speed lines</b><span>motion, not identity:<br>they stay out of the icon</span>
+  </div>
+  <div class="lead" style="left:648px;top:330px;width:46px"></div>
+
+  <p class="foot">The body and all five hem peaks are shared character for character with
+    assets/icon.svg, so the mascot and the installed icon cannot drift apart. A test asserts it.</p>
+</div>
+</x-dc>
+</body>
+</html>

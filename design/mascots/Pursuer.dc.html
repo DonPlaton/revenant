@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body{margin:0}
+    a{color:#dd7b52}a:hover{color:#e88f68}
+    .sheet{position:relative;width:880px;height:640px;background:#1c1a18;color:#eeeae1;
+      font:13px/1.5 "Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace}
+    .eyebrow{position:absolute;left:44px;top:38px;font-size:10px;letter-spacing:.24em;color:#7a746b}
+    .name{position:absolute;left:44px;top:62px;margin:0;font-weight:400;font-size:30px;
+      font-family:"Iowan Old Style",Palatino,Georgia,serif}
+    .note{position:absolute;left:44px;top:110px;width:310px;margin:0;font-size:12px;line-height:1.7;
+      color:#a9a297}
+    .stage{position:absolute;left:378px;top:196px;width:380px;height:250px}
+    .stage svg{display:block;width:100%;height:100%;overflow:visible}
+    .label{position:absolute;font-size:10.5px;letter-spacing:.05em;color:#eeeae1;white-space:nowrap}
+    .label b{display:block;font-weight:500}
+    .label span{display:block;color:#7a746b;font-size:9.5px;letter-spacing:.02em;margin-top:2px}
+    .lead{position:absolute;background:#35322d;height:1px}
+    .rights{position:absolute;left:44px;top:392px;width:290px;font-size:10.5px;line-height:1.75;
+      color:#7a746b;border-left:2px solid #79a6b8;padding:2px 0 2px 14px}
+    .foot{position:absolute;left:44px;bottom:38px;width:790px;font-size:10.5px;color:#7a746b;
+      border-top:1px solid #35322d;padding-top:12px;line-height:1.7}
+  </style>
+</helmet>
+
+<div class="sheet">
+  <p class="eyebrow">CAST, SHEET TWO</p>
+  <h1 class="name">The pursuer</h1>
+  <p class="note">A block cursor whose bracket jaws bite. The hem of the figure
+    it chases is a terminal caret already, so the two belong to one alphabet
+    rather than two.</p>
+
+  <div class="rights">Deliberately not a disc with a wedge taken out of it.
+    That reads as somebody else's character however you recolour it. Blue is
+    the tone the interface already gives the other agent.</div>
+
+  <div class="stage">
+    <svg viewBox="0 0 52 40">
+      <g stroke="#79a6b8" fill="none" stroke-width="3" stroke-linecap="round" opacity="0.4">
+        <path d="M41 13c3.4 3.2 3.4 5.6 0 8.8"/>
+        <path d="M46 13c3.4 3.2 3.4 5.6 0 8.8" opacity="0.55"/>
+      </g>
+      <g transform="rotate(13 35 20)">
+        <path fill="#79a6b8" d="M10 4h22a4 4 0 0 1 4 4v12H6V8a4 4 0 0 1 4-4z"/>
+        <rect x="9.6" y="6.6" width="9" height="2.4" rx="1.2" fill="#fff" opacity="0.22"/>
+        <circle cx="26.5" cy="12" r="2.5" fill="#15211f"/>
+      </g>
+      <g transform="rotate(-13 35 20)">
+        <path fill="#79a6b8" d="M6 20h30v12a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z"/>
+        <rect x="9.6" y="30.4" width="6.4" height="2.2" rx="1.1" fill="#fff" opacity="0.14"/>
+      </g>
+      <circle cx="35" cy="20" r="1" fill="#1c1a18" opacity="0.5"/>
+    </svg>
+  </div>
+
+  <div class="label" style="left:640px;top:150px">
+    <b>hinge</b><span>both jaws turn about one point<br>on the trailing edge</span>
+  </div>
+  <div class="lead" style="left:594px;top:190px;width:44px;transform:rotate(38deg);transform-origin:right center"></div>
+
+  <div class="label" style="left:640px;top:452px">
+    <b>wake</b><span>two chevrons, half a beat apart</span>
+  </div>
+  <div class="lead" style="left:600px;top:440px;width:38px"></div>
+
+  <div class="label" style="left:396px;top:462px">
+    <b>bite</b><span>15 degrees each way, 210ms,<br>the fastest clock on the sheet</span>
+  </div>
+  <div class="lead" style="left:452px;top:432px;width:1px;height:24px"></div>
+
+  <p class="foot">Gloss on both jaws and a single dark eye in the upper one. The eye rides
+    the jaw, so it tilts with every bite rather than floating over the shape.</p>
+</div>
+</x-dc>
+</body>
+</html>

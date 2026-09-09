@@ -65,19 +65,63 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .tabs button:hover{color:var(--ink-2)}
 .tabs button[aria-current=true]{color:var(--ink)}
 .tabs button[aria-current=true]::after{background:var(--ember)}
+/* ── the cast ───────────────────────────────────────────────────────────── */
+/* One drawing, five places. The horizontal travel is the only thing script
+   touches; every part that gives the figure life is a keyframe on its own
+   clock, which is what keeps it from reading as a sliding cut-out. */
+.rev{display:block;height:100%;width:auto;overflow:visible;color:var(--ember)}
+.rev .body,.rev .peak{fill:currentColor}
+.rev .peak{transform-box:fill-box;transform-origin:center top;
+  animation:hem 620ms var(--ease) infinite alternate}
+.rev .peak:nth-child(2){animation-delay:80ms}
+.rev .peak:nth-child(3){animation-delay:160ms}
+.rev .peak:nth-child(4){animation-delay:240ms}
+.rev .peak:nth-child(5){animation-delay:320ms}
+@keyframes hem{from{transform:scaleY(1)}to{transform:scaleY(.55)}}
+.rev .shade{fill:#000;opacity:.16}
+.rev .sheen{fill:#fff;opacity:.22}
+.rev .sclera{fill:#f4efe6}
+.rev .pupil{fill:#191715}
+.rev .eyes{transform-box:fill-box;transform-origin:center;animation:blink 3.4s step-end infinite}
+@keyframes blink{0%,92%{transform:scaleY(1)}94%,97%{transform:scaleY(.12)}98%,100%{transform:scaleY(1)}}
+.rev .mouth{fill:#191715;opacity:.85;transform-box:fill-box;transform-origin:center;
+  animation:gasp 900ms var(--ease) infinite alternate}
+@keyframes gasp{from{transform:scale(1)}to{transform:scale(.7,1.25)}}
+.rev .streak{stroke:currentColor;stroke-linecap:round;fill:none;
+  transform-box:fill-box;transform-origin:left center;animation:streak 520ms linear infinite}
+.rev .streak:nth-of-type(2){animation-delay:170ms}
+.rev .streak:nth-of-type(3){animation-delay:340ms}
+@keyframes streak{
+  0%{transform:translateX(-5px) scaleX(.45);opacity:.72}
+  100%{transform:translateX(8px) scaleX(1.35);opacity:0}
+}
+
+/* The pursuer is a block cursor with bracket jaws, hinged at its trailing edge. */
+.pur{display:block;height:100%;width:auto;overflow:visible;color:var(--codex)}
+.pur .jaw{fill:currentColor;transform-box:view-box}
+.pur .up{transform-origin:35px 20px;animation:bite 210ms var(--ease) infinite alternate}
+.pur .lo{transform-origin:35px 20px;animation:bite-lo 210ms var(--ease) infinite alternate}
+@keyframes bite{from{transform:rotate(1deg)}to{transform:rotate(15deg)}}
+@keyframes bite-lo{from{transform:rotate(-1deg)}to{transform:rotate(-15deg)}}
+.pur .gloss{fill:#fff;opacity:.22}
+.pur .eye{fill:#15211f}
+.pur .wake{stroke:currentColor;fill:none;stroke-width:3;stroke-linecap:round;
+  animation:wake 460ms linear infinite}
+.pur .wake:nth-of-type(2){animation-delay:230ms}
+@keyframes wake{0%{transform:translateX(0);opacity:.45}100%{transform:translateX(11px);opacity:0}}
+
 /* The empty stretch of the masthead. It drags the window, and now and then
    something runs across it. */
 .lane{flex:1;position:relative;height:100%;overflow:hidden}
-.runner,.chomp,.crumb{position:absolute;pointer-events:none}
-.runner{top:11px;left:0;width:14px;height:17px;color:var(--ember)}
-.runner svg{display:block;width:100%;height:100%;fill:currentColor}
-.chomp{top:14px;left:0;width:13px;height:13px;border-radius:50%;background:var(--codex);
-  animation:chomp 190ms var(--ease) infinite alternate}
-@keyframes chomp{
-  from{clip-path:polygon(50% 50%, 0 10%, 0 0, 100% 0, 100% 100%, 0 100%, 0 90%)}
-  to  {clip-path:polygon(50% 50%, 0 46%, 0 0, 100% 0, 100% 100%, 0 100%, 0 54%)}
-}
-.crumb{top:20px;width:3px;height:3px;background:var(--ink-3)}
+.runner,.hunter,.crumb{position:absolute;pointer-events:none}
+.runner{top:8px;left:0;height:24px}
+.hunter{top:9px;left:0;height:22px}
+.crumb{top:19px;width:3px;height:3px;background:var(--ink-3);
+  animation:drop 180ms var(--ease) backwards}
+@keyframes drop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+/* Transform and opacity only, so a swallowed crumb never repaints. */
+.crumb.gone{background:var(--codex);animation:swallow 200ms var(--ease) forwards}
+@keyframes swallow{to{transform:scale(2.4);opacity:0}}
 .chrome{display:flex;gap:6px}
 .chrome button{width:30px;height:24px;display:grid;place-items:center;color:var(--ink-3);
   transition:color 140ms var(--ease),background 140ms var(--ease)}
@@ -88,6 +132,10 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .head{flex:0 0 auto;padding:20px 40px 0}
 .eyebrow{font-size:10px;letter-spacing:.24em;color:var(--ink-3);margin:0 0 11px}
 .claim{font-family:var(--serif);font-size:28px;line-height:1.14;margin:0;font-weight:400}
+.claim[data-typing=true]::after{content:"";display:inline-block;width:.42em;height:.82em;
+  margin-left:.1em;vertical-align:-.05em;background:var(--ember);
+  animation:pulse 1s steps(1,end) infinite}
+@keyframes pulse{0%,55%{opacity:1}56%,100%{opacity:0}}
 .where{margin:9px 0 0;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
 
@@ -115,6 +163,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:1px;height
 input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 .track:focus-within .line{background:var(--ember)}
 .track:focus-within .caret{outline:1px solid var(--ember);outline-offset:2px}
+.spark{position:absolute;top:7px;width:2px;height:2px;background:var(--ember);
+  pointer-events:none;animation:spark 620ms var(--ease) forwards}
+@keyframes spark{to{transform:translate(var(--dx),var(--dy)) scale(.4);opacity:0}}
 .marks{position:relative;height:17px;font-size:10px;letter-spacing:.08em;color:var(--ink-3);
   margin-top:3px}
 .marks button{position:absolute;top:0;font:inherit;color:var(--ink-3);cursor:pointer;
@@ -181,6 +232,13 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
   background:linear-gradient(180deg,transparent,rgba(221,123,82,.20) 70%,var(--ember) 98%,transparent)}
 .register.raising .sweep{opacity:1;animation:sweep 900ms steps(12,end) 1 forwards}
 @keyframes sweep{from{transform:translateY(-38px)}to{transform:translateY(560px)}}
+.soul{position:absolute;right:64px;top:12px;height:16px;pointer-events:none;
+  animation:ascend 1.5s var(--ease) forwards}
+@keyframes ascend{
+  0%{opacity:0;transform:translateY(8px) scale(.55)}
+  22%{opacity:.95}
+  100%{opacity:0;transform:translateY(-52px) scale(1.1)}
+}
 .stamp{position:absolute;right:2px;top:11px;font-family:var(--serif);font-size:11px;
   letter-spacing:.22em;color:var(--ember);border:1px solid var(--ember);padding:2px 7px;
   transform:rotate(-8deg);animation:stamp 300ms var(--ease) both}
@@ -189,10 +247,22 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 
 /* ── states ─────────────────────────────────────────────────────────────── */
 .blank{padding:56px 0 0 110px;max-width:52ch}
-.blank .pale{display:block;width:27px;height:33px;margin:0 0 18px;color:var(--ink-3);opacity:.32;
+.blank{position:relative}
+.blank .pale{display:block;height:44px;margin:0 0 18px;color:var(--ember);opacity:.46;
   animation:hover 5.5s ease-in-out infinite alternate}
-.blank .pale svg{display:block;width:100%;height:100%;fill:currentColor}
+.blank .pale .streak{display:none}
+.blank .pale .mouth{animation:none}
+/* Standing still on a page left open, so the hem idles rather than races. */
+.blank .pale .peak{animation-duration:2.4s}
 @keyframes hover{from{transform:translateY(0)}to{transform:translateY(-5px)}}
+.mote{position:absolute;width:2.5px;height:2.5px;border-radius:50%;background:var(--ember);
+  opacity:0;animation:rise 7s linear infinite}
+@keyframes rise{
+  0%{opacity:0;transform:translateY(0)}
+  14%{opacity:.6}
+  70%{opacity:.34}
+  100%{opacity:0;transform:translateY(-96px)}
+}
 .blank p{margin:0;font-family:var(--serif);font-size:17px;line-height:1.5;color:var(--ink-2);
   text-wrap:pretty}
 .blank small{display:block;margin-top:13px;font-family:var(--mono);font-size:11.5px;line-height:1.8;
@@ -344,14 +414,56 @@ html[data-still] .sweep{display:none}
     tally: $("tally"), raise: $("raise"), word: $("word"), tabs: $("tabs"), segs: $("segs"),
   };
 
-  // The figure from the app icon, cropped to the shrouded body and its two eyes.
-  // Both eyes look back over its shoulder while it runs.
-  const FIGURE = `<svg viewBox="64 38 128 152" aria-hidden="true">
-      <path d="M128 46c-33 0-56 25-56 58v76l18-15 17 15 21-20 21 20 17-15 18 15v-76c0-33-23-58-56-58Z"/>
-      <circle cx="113" cy="104" r="10" fill="#1c1a18"/>
-      <circle cx="157" cy="104" r="10" fill="#1c1a18"/>
+  // The same drawing as assets/icon.svg, with the parts the stylesheet animates
+  // split out. Its pupils sit back and to the right, so it watches what follows
+  // it. The streaks are motion rather than identity and stay out of the icon.
+  const FIGURE = `<svg class="rev" viewBox="0 0 58 58" aria-hidden="true">
+      <g>
+        <path class="streak" d="M41 16h8" stroke-width="3"/>
+        <path class="streak" d="M42 26h10" stroke-width="3.4"/>
+        <path class="streak" d="M41 34h7" stroke-width="2.6"/>
+      </g>
+      <path class="body" d="M4 42V21C4 10.5 12 2.5 22 2.5S40 10.5 40 21v21z"/>
+      <g><path class="peak" d="M4 41.4h7.2L7.6 50z"/><path class="peak" d="M11.2 41.4h7.2L14.8 48z"/><path class="peak" d="M18.4 41.4h7.2L22 51z"/><path class="peak" d="M25.6 41.4h7.2L29.2 48z"/><path class="peak" d="M32.8 41.4h7.2L36.4 50z"/></g>
+      <path class="shade" d="M30 3.6C36 7 40 13.4 40 21v21h-6V21c0-7-1.6-13.2-4-17.4z"/>
+      <path class="sheen" d="M14.6 5.2C11 8.6 9 14.2 9 21v12H6V21c0-6.6 3.2-12.8 8.6-15.8z"/>
+      <g class="eyes">
+        <ellipse class="sclera" cx="15.4" cy="21.5" rx="5.3" ry="6"/>
+        <ellipse class="sclera" cx="29.6" cy="21.5" rx="5.3" ry="6"/>
+        <circle class="pupil" cx="17.8" cy="22.6" r="2.5"/>
+        <circle class="pupil" cx="32" cy="22.6" r="2.5"/>
+      </g>
+      <ellipse class="mouth" cx="22.4" cy="33.4" rx="2.5" ry="3"/>
     </svg>`;
 
+  // A block cursor with bracket jaws. The hem of the figure it chases is a
+  // caret too, so the pair belongs to the same alphabet.
+  const HUNTER = `<svg class="pur" viewBox="0 0 52 40" aria-hidden="true">
+      <path class="wake" d="M41 13c3.4 3.2 3.4 5.6 0 8.8"/>
+      <path class="wake" d="M41 13c3.4 3.2 3.4 5.6 0 8.8"/>
+      <g class="jaw up">
+        <path d="M10 4h22a4 4 0 0 1 4 4v12H6V8a4 4 0 0 1 4-4z"/>
+        <rect class="gloss" x="9.6" y="6.6" width="9" height="2.4" rx="1.2"/>
+        <circle class="eye" cx="26.5" cy="12" r="2.5"/>
+      </g>
+      <g class="jaw lo">
+        <path d="M6 20h30v12a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z"/>
+        <rect class="gloss" x="9.6" y="30.4" width="6.4" height="2.2" rx="1.1" style="opacity:.14"/>
+      </g>
+    </svg>`;
+
+  const MOTES = [...Array(7)].map((unused, i) =>
+    `<i class="mote" style="left:${96 + i * 27}px;top:${34 + (i % 4) * 15}px;` +
+    `animation-delay:${i * 900}ms"></i>`).join("");
+
+  // Every flourish in here is decoration, so all of them defer to the same two
+  // conditions: a screenshot in progress, or a reader who asked for less motion.
+  // One live query object rather than a new one per call; it keeps reporting the
+  // current setting, so a reader who turns motion down mid-session is heard.
+  const calm = matchMedia("(prefers-reduced-motion: reduce)");
+  const stillness = () => Boolean(document.documentElement.dataset.still) || calm.matches;
+
+  let typed = false;
   let sessions = [];
   let chosen = new Set();
   let agent = "";
@@ -391,8 +503,7 @@ html[data-still] .sweep{display:none}
   let running = false;
 
   function run() {
-    if (running || document.documentElement.dataset.still) return;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (running || stillness()) return;
     const width = lane.clientWidth;
     if (width < 260) return;
 
@@ -401,7 +512,8 @@ html[data-still] .sweep{display:none}
     figure.className = "runner";
     figure.innerHTML = FIGURE;
     const shape = document.createElement("span");
-    shape.className = "chomp";
+    shape.className = "hunter";
+    shape.innerHTML = HUNTER;
     lane.append(figure, shape);
 
     const crumbs = [];
@@ -426,13 +538,16 @@ html[data-still] .sweep{display:none}
       }
       // The oldest crumb lies furthest to the right, so it is always the next one.
       while (crumbs.length && x + reach <= Number.parseFloat(crumbs[0].style.left)) {
-        crumbs.shift().remove();
+        const eaten = crumbs.shift();
+        eaten.className = "crumb gone";
+        setTimeout(() => eaten.remove(), 220);
       }
 
       if (done < 1) return requestAnimationFrame(step);
       figure.remove();
       shape.remove();
       for (const crumb of crumbs) crumb.remove();
+      for (const left of lane.querySelectorAll(".crumb")) left.remove();
       running = false;
     }
     requestAnimationFrame(step);
@@ -500,12 +615,34 @@ html[data-still] .sweep{display:none}
     }
   }
 
+  // Dragging the caret back through time strikes sparks off it. They are spawned
+  // on the track rather than the caret itself, which is mid-transition and would
+  // carry them along with it.
+  const track = el.caret.parentElement;
+  let struck = 0;
+
+  function sparks() {
+    if (stillness() || performance.now() - struck < 55) return;
+    if (track.querySelectorAll(".spark").length > 14) return;
+    struck = performance.now();
+    for (let i = 0; i < 2; i++) {
+      const bit = document.createElement("i");
+      bit.className = "spark";
+      bit.style.left = el.caret.style.left;
+      bit.style.setProperty("--dx", `${(Math.random() * 15 - 5).toFixed(1)}px`);
+      bit.style.setProperty("--dy", `${(-9 - Math.random() * 13).toFixed(1)}px`);
+      track.appendChild(bit);
+      setTimeout(() => bit.remove(), 640);
+    }
+  }
+
   el.register.addEventListener("scroll", paintEdge, { passive: true });
   addEventListener("resize", paintEdge);
 
   let hold;
   el.range.addEventListener("input", () => {
     paintRuler();
+    sparks();
     clearTimeout(hold);
     hold = setTimeout(load, 190);
   });
@@ -522,6 +659,8 @@ html[data-still] .sweep{display:none}
       // Leaving the loading class on would dim the register for good, including
       // every row a later reload paints under it.
       el.register.classList.remove("loading");
+      typed = true;
+      el.claim.dataset.typing = "false";
       el.claim.textContent = "The local service stopped answering.";
       el.rows.innerHTML = "";
       return;
@@ -568,6 +707,29 @@ html[data-still] .sweep{display:none}
     });
   }
 
+  // The first claim is typed out under a block cursor. Every later one lands at
+  // once, because by then the reader is waiting on an answer rather than a show.
+  let typewriter = null;
+
+  function claim(text) {
+    clearTimeout(typewriter);
+    if (typed || stillness()) {
+      el.claim.textContent = text;
+      el.claim.dataset.typing = "false";
+      typed = true;
+      return;
+    }
+    typed = true;
+    el.claim.dataset.typing = "true";
+    el.claim.textContent = "";
+    let cut = 0;
+    (function letter() {
+      el.claim.textContent = text.slice(0, ++cut);
+      if (cut < text.length) return void (typewriter = setTimeout(letter, 17));
+      typewriter = setTimeout(() => { el.claim.dataset.typing = "false"; }, 2200);
+    })();
+  }
+
   function paint() {
     const open = sessions.filter((s) => !s.live);
     const held = sessions.length - open.length;
@@ -575,12 +737,12 @@ html[data-still] .sweep{display:none}
     // Count what can actually be raised: saying "eight outlived their terminals"
     // when all eight are still running reads as a lie.
     if (!sessions.length) {
-      el.claim.textContent = `Nothing in the last ${stop().said}.`;
+      claim(`Nothing in the last ${stop().said}.`);
     } else if (!open.length) {
-      el.claim.textContent = `${say(held)} session${held === 1 ? " is" : "s are"} still running.`;
+      claim(`${say(held)} session${held === 1 ? " is" : "s are"} still running.`);
     } else {
-      el.claim.textContent = `${say(open.length)} session${open.length === 1 ? "" : "s"} outlived ` +
-        `${open.length === 1 ? "its terminal" : "their terminals"}.`;
+      claim(`${say(open.length)} session${open.length === 1 ? "" : "s"} outlived ` +
+        `${open.length === 1 ? "its terminal" : "their terminals"}.`);
     }
 
     if (!sessions.length) {
@@ -588,6 +750,7 @@ html[data-still] .sweep{display:none}
         <div class="ghost-rule"></div><div class="ghost-rule"></div><div class="ghost-rule"></div>
         <div class="blank">
           <span class="pale" aria-hidden="true">${FIGURE}</span>
+          ${MOTES}
           <p>Every session in this window is still running, or there were none to begin with.</p>
           <small>Drag the caret right to look further back.<br>
                  Nothing here is deleted. Transcripts stay on disk for as long as your agent keeps them.</small>
@@ -613,7 +776,9 @@ html[data-still] .sweep{display:none}
 
   function paintEdge() {
     const box = el.register;
-    box.dataset.more = String(box.scrollTop + box.clientHeight < box.scrollHeight - 2);
+    // Writing on every scroll event would dirty style for the next one's read.
+    const more = String(box.scrollTop + box.clientHeight < box.scrollHeight - 2);
+    if (box.dataset.more !== more) box.dataset.more = more;
   }
 
   function reveal(node) {
@@ -725,6 +890,12 @@ html[data-still] .sweep{display:none}
           stamp.className = "stamp";
           stamp.textContent = "RAISED";
           node.appendChild(stamp);
+
+          const soul = document.createElement("span");
+          soul.className = "soul";
+          soul.innerHTML = FIGURE;
+          node.appendChild(soul);
+          setTimeout(() => soul.remove(), 1600);
         }, 120 + i * 90);
       });
     }

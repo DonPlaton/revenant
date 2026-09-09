@@ -9,3 +9,6 @@ revive.ps1
 revive.sh
 revive.cmd
 design/revenant-register.html
+
+# the seeded canvas payload: the .dc.html files beside it are the design
+design/mascots/revenant-cast.html

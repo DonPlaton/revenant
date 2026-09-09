@@ -334,7 +334,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-293 tests, no network, no real session touched. Everything runs against a synthetic config
+296 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
 terminal backends against both layouts on all three platforms, quoting of paths with spaces and
@@ -360,10 +360,20 @@ motion that reads as mechanical rather than decorative. The canvas uses Spectral
 The app ships with metrically similar system faces instead, so it never asks the network for a
 font.
 
-The masthead breaks that rule once. Every few hours, on open, the figure from the icon bolts the
-length of it shedding crumbs, with something hungrier a few pixels behind. Clicking the wordmark
-sets it off on demand, and a revival earns a lap. Both shapes are drawn from this project's own
-icon and palette, and the whole thing sits still under `prefers-reduced-motion`.
+The interface breaks that rule in five places, none of them on a timer in the corner of your eye.
+The figure from the icon bolts the length of the masthead shedding crumbs, with a block cursor
+close enough behind to eat every one; that one runs every few hours on open, on a click of the
+wordmark, and once a revival lands. Dragging the caret back through time strikes sparks off it.
+Every row that comes back releases a soul that lifts off the register. An empty register keeps the
+figure standing in it while motes drift past. The first claim types itself under a block cursor,
+and every later one lands whole, because by then you are waiting on an answer rather than a show.
+All of it stops under `prefers-reduced-motion`.
+
+The cast is drawn out on a
+[second canvas](https://claude.ai/code/artifact/ee61b78b-c2fa-4f52-bcce-543b54dbd8d2), at working
+sizes and with the moving parts labelled. Nothing in it belongs to anyone else: the runner is this
+project's own icon, and the thing behind it is a terminal cursor, which is what the runner's hem
+has been since the first sketch.
 
 ## License
 
