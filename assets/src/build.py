@@ -54,7 +54,14 @@ def browser() -> str:
     raise SystemExit("Headless Chrome or Edge is required to render the images.")
 
 
-def shoot(url: str, out: Path, size: tuple[int, int], *, scale: int = 1) -> None:
+def shoot(url: str, out: Path, size: tuple[int, int], *, scale: int = 1,
+          transparent: bool = False) -> None:
+    """Render `url` to `out`.
+
+    Headless Chrome paints an opaque white backdrop unless told otherwise, which
+    fills in the corners the icon's rounded plate leaves empty. Anything meant to
+    sit on an unknown background has to ask for the transparent one.
+    """
     out.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
@@ -62,6 +69,7 @@ def shoot(url: str, out: Path, size: tuple[int, int], *, scale: int = 1) -> None
             "--headless=new",
             "--disable-gpu",
             "--hide-scrollbars",
+            *(["--default-background-color=00000000"] if transparent else []),
             f"--screenshot={out}",
             f"--window-size={size[0]},{size[1]}",
             f"--force-device-scale-factor={scale}",
@@ -83,7 +91,7 @@ def build_icon() -> None:
     print("icon")
     with tempfile.TemporaryDirectory() as tmp:
         png = Path(tmp) / "icon.png"
-        shoot((ASSETS / "icon.svg").as_uri(), png, (256, 256))
+        shoot((ASSETS / "icon.svg").as_uri(), png, (256, 256), transparent=True)
         image = Image.open(png).convert("RGBA")
     image.save(ASSETS / "icon.png")
     image.save(
