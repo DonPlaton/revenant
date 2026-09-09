@@ -1,4 +1,4 @@
-"""Tests for Revenant. Everything runs against a synthetic config root - no real session is touched."""
+"""Tests for Revenant. Everything runs against a synthetic config root, so no real session is touched."""
 
 from __future__ import annotations
 
@@ -256,7 +256,7 @@ def test_slug_filter(root: Path) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# live detection - the safety-critical part
+# live detection, the safety-critical part
 # --------------------------------------------------------------------------- #
 
 

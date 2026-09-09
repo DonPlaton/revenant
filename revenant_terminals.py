@@ -108,8 +108,8 @@ def windows_terminal_binary() -> str | None:
     `wt.exe` sitting directly in WindowsApps is an app-execution alias, and
     starting it fails with ERROR_CANT_ACCESS_FILE (1920) on machines where the
     alias is switched off or its reparse point does not resolve for the calling
-    process - with Windows Terminal installed and working perfectly by hand. The
-    package's own folder beside it holds a second entry point with neither
+    process, all while Windows Terminal is installed and works perfectly by hand.
+    The package's own folder beside it holds a second entry point with neither
     problem, so that one is tried first and the alias is only the fallback.
     """
     if not WINDOWS:

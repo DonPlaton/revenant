@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Revenant - bring your agent sessions back from the dead.
+"""Revenant: bring your agent sessions back from the dead.
 
 Finds every coding-agent session that was active in a chosen time window and
 restores it: a readable table, paste-ready `cd` + resume command pairs, a

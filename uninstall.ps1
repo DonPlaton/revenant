@@ -66,5 +66,5 @@ if (-not $removed) { Write-Host 'nothing to remove' }
 
 $state = Join-Path $env:LOCALAPPDATA $appName
 if (Test-Path $state) {
-  Write-Host "Revenant's own state lives in $state - delete it by hand if you want it gone."
+  Write-Host "Revenant's own state lives in $state. Delete it by hand if you want it gone."
 }
