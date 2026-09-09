@@ -1,7 +1,7 @@
 """Where the revived sessions land: tabs of one window, or a window each.
 
-Every plan is built without running anything, so the whole matrix - fourteen
-backends against two layouts - is exercised on all three platforms.
+Every plan is built without running anything, so the whole matrix of fourteen
+backends against two layouts is exercised on all three platforms.
 """
 
 from __future__ import annotations

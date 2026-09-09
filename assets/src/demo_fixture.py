@@ -35,7 +35,7 @@ SESSIONS: list[tuple[str, str, float, int]] = [
     (r"C:\dev\payments-api", "audit every place we assume the currency is USD", 1700.0, 26),
 ]
 
-#: Sessions that are "still running" in the screenshots - they render locked.
+#: Sessions that count as "still running" in the screenshots, so they render locked.
 LIVE = [
     (r"C:\dev\payments-api", "payments-api-7c", "review the diff before I push"),
     (r"C:\dev\ml-pipeline", "ml-pipeline-1a", "keep going"),

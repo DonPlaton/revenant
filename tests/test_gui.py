@@ -1,4 +1,4 @@
-"""Tests for the desktop app's local backend - mostly about what it refuses to do."""
+"""Tests for the desktop app's local backend, mostly about what it refuses to do."""
 
 from __future__ import annotations
 

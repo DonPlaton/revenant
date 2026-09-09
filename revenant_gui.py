@@ -3,7 +3,7 @@
 
 One backend, three ways to show it:
 
-1. a native window via `pywebview` (preferred - looks and behaves like an app),
+1. a native window via `pywebview` (preferred, since it looks and behaves like an app),
 2. a chromeless Chrome/Edge window via `--app=` (no extra dependency),
 3. the default browser (always works).
 
@@ -227,10 +227,10 @@ class Backend:
     def wait_until_idle(self, *, grace: float = 20.0) -> None:
         """Block until the UI asks to quit or stops sending heartbeats.
 
-        A window can go away in ways that never reach us - the OS close button, a
+        A window can go away in ways that never reach us: the OS close button, a
         browser crash, or a second launch handing the URL to an already running
-        browser and exiting at once - so silence is the signal, not the lifetime of
-        the process we spawned.
+        browser and exiting at once. Silence is therefore the signal, not the
+        lifetime of the process we spawned.
         """
         # The clock starts now, not when the backend was built: a browser doing a
         # cold start with a fresh profile can easily eat the whole grace period
