@@ -50,34 +50,67 @@ def test_the_slider_thumb_does_not_inset_its_own_travel(page: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# the masthead run
+# the cast and its five moments
 # --------------------------------------------------------------------------- #
-def test_the_run_yields_to_reduced_motion_and_to_screenshots(page: str) -> None:
-    guard = page.split("function run() {", 1)[1].split("const width", 1)[0]
-    assert "document.documentElement.dataset.still" in guard, "asset builds must stay still"
-    assert 'matchMedia("(prefers-reduced-motion: reduce)").matches' in guard
-    assert "if (running" in guard, "a second run must not start on top of the first"
+def test_one_helper_decides_whether_anything_moves(page: str) -> None:
+    """A screenshot in progress and a reader who asked for less motion are the
+    same answer, so every flourish asks the same question."""
+    assert "const stillness = () => Boolean(document.documentElement.dataset.still) || calm.matches;" in page
+    assert 'const calm = matchMedia("(prefers-reduced-motion: reduce)");' in page
+    for gated in ("if (running || stillness()) return;",
+                  "if (stillness() || performance.now() - struck < 55) return;",
+                  "if (typed || stillness()) {"):
+        assert gated in page, f"ungated: {gated}"
+
+
+def test_the_figure_is_animated_in_parts(page: str) -> None:
+    """A single sliding sprite is what makes this sort of thing look like a
+    cut-out. Each part carries its own clock."""
+    for part in ("@keyframes hem{", "@keyframes blink{", "@keyframes gasp{",
+                 "@keyframes streak{", "@keyframes bite{", "@keyframes wake{"):
+        assert part in page, f"missing: {part}"
+    assert ".rev .peak:nth-child(5){animation-delay:320ms}" in page, "the hem ripples in sequence"
 
 
 def test_the_run_cleans_up_after_itself(page: str) -> None:
     body = page.split("function run() {", 1)[1].split("$(\"wordmark\")", 1)[0]
     for line in ("figure.remove();", "shape.remove();", "for (const crumb of crumbs) crumb.remove();",
+                 'for (const left of lane.querySelectorAll(".crumb")) left.remove();',
                  "running = false;"):
         assert line in body, f"missing: {line}"
 
 
-def test_the_run_draws_only_this_project(page: str) -> None:
-    """The runner is the app's own icon and the shape behind it is a plain disc.
+def test_the_cast_draws_only_this_project(page: str) -> None:
+    """The runner is the app's own icon and its pursuer is a block cursor.
 
-    Both take their colour from the tokens the interface already defines, so no
+    Both take their colour from tokens the interface already defines, so no
     third party's character, mark or livery is reproduced.
     """
-    assert "color:var(--ember)" in page.split(".runner{", 1)[1].split("}", 1)[0]
-    assert "background:var(--codex)" in page.split(".chomp{", 1)[1].split("}", 1)[0]
-    # The path is the figure from assets/icon.svg.
+    assert "color:var(--ember)" in page.split(".rev{", 1)[1].split("}", 1)[0]
+    assert "color:var(--codex)" in page.split(".pur{", 1)[1].split("}", 1)[0]
+    # The body and every hem peak are shared with assets/icon.svg, character for
+    # character, so the mascot and the installed icon cannot drift apart.
     icon = (PAGE.parents[1] / "assets" / "icon.svg").read_text(encoding="utf-8")
-    body = re.search(r'd="(M128 46c-33[^"]+)"', icon)
-    assert body and body.group(1) in page
+    shared = re.findall(r'<path d="(M[^"]+)"/>', icon)
+    assert len(shared) >= 6, "expected the body and five hem peaks in the icon"
+    for path in shared[:6]:
+        assert path in page, f"icon and mascot disagree on {path[:28]}"
+
+
+def test_the_other_four_moments_are_wired(page: str) -> None:
+    """One animation in one corner was the complaint. These are the rest."""
+    assert 'bit.className = "spark";' in page and "sparks();" in page, "the ruler caret"
+    assert 'soul.className = "soul";' in page and "@keyframes ascend{" in page, "the register rows"
+    assert 'class="mote"' in page and "@keyframes rise{" in page, "the empty register"
+    assert 'el.claim.dataset.typing = "true";' in page and "@keyframes pulse{" in page, "the claim"
+
+
+def test_only_the_first_claim_is_typed(page: str) -> None:
+    """Later ones answer a question the reader is already waiting on."""
+    assert "let typed = false;" in page
+    body = page.split("function claim(text) {", 1)[1].split("function paint()", 1)[0]
+    assert "if (typed || stillness()) {" in body
+    assert "typed = true;" in body
 
 
 # --------------------------------------------------------------------------- #

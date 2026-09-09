@@ -1,0 +1,13 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",     "x": 0,    "y": 0,   "w": 880,  "h": 640 },
+    { "file": "Pursuer.dc.html",  "x": 980,  "y": 0,   "w": 880,  "h": 640 },
+    { "file": "Sizes.dc.html",    "x": 0,    "y": 780, "w": 880,  "h": 400 },
+    { "file": "Moments.dc.html",  "x": 980,  "y": 780, "w": 1180, "h": 720 }
+  ],
+  "annotations": [
+    { "id": "brief", "x": 0, "y": -150, "w": 420,
+      "text": "Revenant's cast, and the five places it turns up.\nPalette and type come straight from the app: nothing here introduces a colour the interface does not already define." }
+  ],
+  "launch": { "view": "canvas" }
+}

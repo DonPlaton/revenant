@@ -18,10 +18,21 @@
   <rect x="1.5" y="1.5" width="253" height="253" rx="56.5" fill="none" stroke="#3a3733" stroke-width="3"/>
   <circle cx="128" cy="112" r="92" fill="url(#halo)"/>
 
-  <!-- the revenant: a shrouded figure whose hem breaks into the three peaks of a terminal caret -->
-  <path d="M128 46c-33 0-56 25-56 58v76l18-15 17 15 21-20 21 20 17-15 18 15v-76c0-33-23-58-56-58Z"
-        fill="url(#ghost)"/>
-  <circle cx="106" cy="106" r="11.5" fill="#161513"/>
-  <circle cx="150" cy="106" r="11.5" fill="#161513"/>
-  <path d="M104 146h48" stroke="#161513" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+  <!-- The revenant: a shrouded figure whose hem breaks into the peaks of a
+       terminal caret. The app animates this same drawing. -->
+  <g transform="translate(59.8 45.25) scale(3.1)" fill="url(#ghost)">
+    <path d="M4 42V21C4 10.5 12 2.5 22 2.5S40 10.5 40 21v21z"/>
+    <path d="M4 41.4h7.2L7.6 50z"/>
+    <path d="M11.2 41.4h7.2L14.8 48z"/>
+    <path d="M18.4 41.4h7.2L22 51z"/>
+    <path d="M25.6 41.4h7.2L29.2 48z"/>
+    <path d="M32.8 41.4h7.2L36.4 50z"/>
+    <path d="M30 3.6C36 7 40 13.4 40 21v21h-6V21c0-7-1.6-13.2-4-17.4z" fill="#000" opacity="0.16"/>
+    <path d="M14.6 5.2C11 8.6 9 14.2 9 21v12H6V21c0-6.6 3.2-12.8 8.6-15.8z" fill="#fff" opacity="0.22"/>
+    <ellipse cx="15.4" cy="21.5" rx="5.3" ry="6" fill="#f4efe6"/>
+    <ellipse cx="29.6" cy="21.5" rx="5.3" ry="6" fill="#f4efe6"/>
+    <circle cx="17.8" cy="22.6" r="2.5" fill="#191715"/>
+    <circle cx="32" cy="22.6" r="2.5" fill="#191715"/>
+    <ellipse cx="22.4" cy="33.4" rx="2.5" ry="3" fill="#191715" opacity="0.85"/>
+  </g>
 </svg>
