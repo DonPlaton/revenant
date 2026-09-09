@@ -41,8 +41,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
   flex:0 0 40px; display:flex; align-items:center; gap:22px;
   padding:0 14px 0 40px; border-bottom:1px solid var(--rule);
 }
-.wordmark{font-family:var(--serif);font-size:15px;letter-spacing:.34em}
-.tabs{display:flex;gap:18px;flex:1}
+.wordmark{font-family:var(--serif);font-size:15px;letter-spacing:.34em;cursor:pointer}
+/* A name like this one has earned a bad connection. */
+.wordmark:hover{animation:gutter 820ms steps(1,end) 1}
+@keyframes gutter{
+  0%,100%{opacity:1}
+  9%{opacity:.24}
+  15%{opacity:1}
+  21%{opacity:.24}
+  27%{opacity:1}
+  58%{opacity:.5}
+  64%{opacity:1}
+}
+.tabs{display:flex;gap:18px;flex:0 0 auto}
 .tabs button{
   position:relative;font-size:11px;letter-spacing:.1em;color:var(--ink-3);
   padding-bottom:3px;transition:color 140ms var(--ease);
@@ -54,7 +65,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .tabs button:hover{color:var(--ink-2)}
 .tabs button[aria-current=true]{color:var(--ink)}
 .tabs button[aria-current=true]::after{background:var(--ember)}
-.drag{flex:0 0 60px;height:100%}
+/* The empty stretch of the masthead. It drags the window, and now and then
+   something runs across it. */
+.lane{flex:1;position:relative;height:100%;overflow:hidden}
+.runner,.chomp,.crumb{position:absolute;pointer-events:none}
+.runner{top:11px;left:0;width:14px;height:17px;color:var(--ember)}
+.runner svg{display:block;width:100%;height:100%;fill:currentColor}
+.chomp{top:14px;left:0;width:13px;height:13px;border-radius:50%;background:var(--codex);
+  animation:chomp 190ms var(--ease) infinite alternate}
+@keyframes chomp{
+  from{clip-path:polygon(50% 50%, 0 10%, 0 0, 100% 0, 100% 100%, 0 100%, 0 90%)}
+  to  {clip-path:polygon(50% 50%, 0 46%, 0 0, 100% 0, 100% 100%, 0 100%, 0 54%)}
+}
+.crumb{top:20px;width:3px;height:3px;background:var(--ink-3)}
 .chrome{display:flex;gap:6px}
 .chrome button{width:30px;height:24px;display:grid;place-items:center;color:var(--ink-3);
   transition:color 140ms var(--ease),background 140ms var(--ease)}
@@ -77,17 +100,25 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 .track .line{position:absolute;left:0;right:0;top:9px;height:1px;background:var(--rule)}
 .track .lit{position:absolute;left:0;top:9px;height:1px;background:var(--ember);
   transition:width 220ms var(--ease)}
-.track .ticks{position:absolute;left:0;right:0;top:4px;display:grid}
-.track .ticks i{height:11px;border-left:1px solid var(--rule)}
-.track .caret{position:absolute;top:0;width:3px;height:19px;margin-left:-1px;background:var(--ember);
+.track .ticks{position:absolute;left:0;right:0;top:4px;height:11px}
+/* Every mark on this track reads its position from the same fraction the caret
+   uses, so a tick and the caret that lands on it agree to the pixel. */
+.track .ticks i{position:absolute;top:0;height:11px;margin-left:-.5px;
+  border-left:1px solid var(--rule)}
+.track .caret{position:absolute;top:0;width:3px;height:19px;margin-left:-1.5px;background:var(--ember);
   transition:left 220ms var(--ease)}
 input[type=range]{position:relative;width:100%;height:26px;margin:0;background:none;cursor:ew-resize;
   -webkit-appearance:none;appearance:none;opacity:0}
+/* A wide thumb would inset its own travel by half its width at each end and
+   drift away from the caret. A hairline thumb travels the full track. */
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:1px;height:26px}
+input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 .track:focus-within .line{background:var(--ember)}
 .track:focus-within .caret{outline:1px solid var(--ember);outline-offset:2px}
-.marks{display:grid;font-size:10px;letter-spacing:.08em;color:var(--ink-3);margin-top:3px}
-.marks button{font:inherit;color:var(--ink-3);cursor:pointer;transition:color 140ms var(--ease);
-  text-align:left;padding:2px 0}
+.marks{position:relative;height:17px;font-size:10px;letter-spacing:.08em;color:var(--ink-3);
+  margin-top:3px}
+.marks button{position:absolute;top:0;font:inherit;color:var(--ink-3);cursor:pointer;
+  transition:color 140ms var(--ease);white-space:nowrap;padding:2px 0}
 .marks button:hover{color:var(--ink-2)}
 .marks button[data-on=true]{color:var(--ember)}
 
@@ -158,6 +189,10 @@ input[type=range]{position:relative;width:100%;height:26px;margin:0;background:n
 
 /* ── states ─────────────────────────────────────────────────────────────── */
 .blank{padding:56px 0 0 110px;max-width:52ch}
+.blank .pale{display:block;width:27px;height:33px;margin:0 0 18px;color:var(--ink-3);opacity:.32;
+  animation:hover 5.5s ease-in-out infinite alternate}
+.blank .pale svg{display:block;width:100%;height:100%;fill:currentColor}
+@keyframes hover{from{transform:translateY(0)}to{transform:translateY(-5px)}}
 .blank p{margin:0;font-family:var(--serif);font-size:17px;line-height:1.5;color:var(--ink-2);
   text-wrap:pretty}
 .blank small{display:block;margin-top:13px;font-family:var(--mono);font-size:11.5px;line-height:1.8;
@@ -226,9 +261,9 @@ html[data-still] .sweep{display:none}
 <div style="display:flex;flex-direction:column;height:100%">
 
   <div class="top">
-    <span class="wordmark">REVENANT</span>
+    <span class="wordmark" id="wordmark" title="Give them a run">REVENANT</span>
     <div class="tabs" id="tabs"></div>
-    <div class="drag pywebview-drag-region"></div>
+    <span class="lane pywebview-drag-region" id="lane" aria-hidden="true"></span>
     <div class="chrome">
       <button id="hide" title="Minimize" aria-label="Minimize">
         <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true"><path d="M1 5.5h9" stroke="currentColor" stroke-width="1"/></svg>
@@ -250,7 +285,7 @@ html[data-still] .sweep{display:none}
     <div class="track">
       <span class="line"></span>
       <span class="lit" id="lit"></span>
-      <span class="ticks" id="ticks"></span>
+      <span class="ticks" id="ticks" aria-hidden="true"></span>
       <span class="caret" id="caret"></span>
       <input type="range" id="range" min="0" max="6" step="1" value="3"
              aria-label="How far back to look" aria-valuetext="seven days">
@@ -309,6 +344,14 @@ html[data-still] .sweep{display:none}
     tally: $("tally"), raise: $("raise"), word: $("word"), tabs: $("tabs"), segs: $("segs"),
   };
 
+  // The figure from the app icon, cropped to the shrouded body and its two eyes.
+  // Both eyes look back over its shoulder while it runs.
+  const FIGURE = `<svg viewBox="64 38 128 152" aria-hidden="true">
+      <path d="M128 46c-33 0-56 25-56 58v76l18-15 17 15 21-20 21 20 17-15 18 15v-76c0-33-23-58-56-58Z"/>
+      <circle cx="113" cy="104" r="10" fill="#1c1a18"/>
+      <circle cx="157" cy="104" r="10" fill="#1c1a18"/>
+    </svg>`;
+
   let sessions = [];
   let chosen = new Set();
   let agent = "";
@@ -341,6 +384,73 @@ html[data-still] .sweep{display:none}
   });
   paintMode();
 
+  // ── the run ───────────────────────────────────────────────────────────
+  // Crumbs fall where the runner has been, and the shape behind it is close
+  // enough to reach each one a moment later.
+  const lane = $("lane");
+  let running = false;
+
+  function run() {
+    if (running || document.documentElement.dataset.still) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const width = lane.clientWidth;
+    if (width < 260) return;
+
+    running = true;
+    const figure = document.createElement("span");
+    figure.className = "runner";
+    figure.innerHTML = FIGURE;
+    const shape = document.createElement("span");
+    shape.className = "chomp";
+    lane.append(figure, shape);
+
+    const crumbs = [];
+    const reach = 74;
+    const travel = width + 130;
+    const began = performance.now();
+    let last = Infinity;
+
+    function step(now) {
+      const done = Math.min(1, (now - began) / 2400);
+      const x = width + 34 - travel * done;
+      figure.style.transform = `translate(${x}px, ${Math.sin(done * 31) * 1.6}px)`;
+      shape.style.transform = `translateX(${x + reach}px)`;
+
+      if (x < width && x > -12 && x < last - 16) {
+        last = x;
+        const crumb = document.createElement("i");
+        crumb.className = "crumb";
+        crumb.style.left = `${Math.round(x + 6)}px`;
+        lane.appendChild(crumb);
+        crumbs.push(crumb);
+      }
+      // The oldest crumb lies furthest to the right, so it is always the next one.
+      while (crumbs.length && x + reach <= Number.parseFloat(crumbs[0].style.left)) {
+        crumbs.shift().remove();
+      }
+
+      if (done < 1) return requestAnimationFrame(step);
+      figure.remove();
+      shape.remove();
+      for (const crumb of crumbs) crumb.remove();
+      running = false;
+    }
+    requestAnimationFrame(step);
+  }
+
+  $("wordmark").addEventListener("click", run);
+
+  // On open it should be a surprise rather than furniture, so it waits a few
+  // hours between runs of its own accord. The wordmark starts one at any time.
+  const RUN_KEY = "revenant.ran";
+  const SETTLE = 6 * 60 * 60 * 1000;
+  try {
+    if (Date.now() - Number(localStorage.getItem(RUN_KEY) || 0) > SETTLE) {
+      localStorage.setItem(RUN_KEY, String(Date.now()));
+      setTimeout(run, 1500);
+    }
+  } catch (e) { /* storage is off; the wordmark still works */ }
+
   const api = (path, options) =>
     fetch(path + (path.includes("?") ? "&" : "?") + "t=" + encodeURIComponent(TOKEN), options)
       .then((r) => r.json());
@@ -360,12 +470,17 @@ html[data-still] .sweep{display:none}
   }
 
   // ── the ruler ─────────────────────────────────────────────────────────
-  el.ticks.style.gridTemplateColumns = `repeat(${STOPS.length}, minmax(0, 1fr))`;
-  el.marks.style.gridTemplateColumns = `repeat(${STOPS.length}, minmax(0, 1fr))`;
-  el.ticks.innerHTML = STOPS.map(() => "<i></i>").join("");
-  el.marks.innerHTML = STOPS.map(
-    (s, i) => `<button type="button" data-i="${i}" aria-label="Look back ${s.said}">${s.mark}</button>`
-  ).join("");
+  // The fraction of the track a stop sits at. The caret, the lit line, the ticks
+  // and the labels all come from here, so they cannot drift apart again.
+  const where = (i) => (i / (STOPS.length - 1)) * 100;
+
+  el.ticks.innerHTML = STOPS.map((s, i) => `<i style="left:${where(i)}%"></i>`).join("");
+  el.marks.innerHTML = STOPS.map((s, i) => {
+    // The end labels hang inside the track rather than off its edges.
+    const pull = i === 0 ? "0" : i === STOPS.length - 1 ? "-100%" : "-50%";
+    return `<button type="button" data-i="${i}" aria-label="Look back ${s.said}"
+              style="left:${where(i)}%;transform:translateX(${pull})">${s.mark}</button>`;
+  }).join("");
   el.marks.addEventListener("click", (event) => {
     const target = event.target.closest("[data-i]");
     if (!target) return;
@@ -376,9 +491,8 @@ html[data-still] .sweep{display:none}
 
   function paintRuler() {
     const index = Number(el.range.value);
-    const ratio = index / (STOPS.length - 1);
-    el.lit.style.width = `${ratio * 100}%`;
-    el.caret.style.left = `${ratio * 100}%`;
+    el.lit.style.width = `${where(index)}%`;
+    el.caret.style.left = `${where(index)}%`;
     el.span.textContent = stop().said;
     el.range.setAttribute("aria-valuetext", stop().said);
     for (const node of el.marks.children) {
@@ -473,6 +587,7 @@ html[data-still] .sweep{display:none}
       el.rows.innerHTML = `
         <div class="ghost-rule"></div><div class="ghost-rule"></div><div class="ghost-rule"></div>
         <div class="blank">
+          <span class="pale" aria-hidden="true">${FIGURE}</span>
           <p>Every session in this window is still running, or there were none to begin with.</p>
           <small>Drag the caret right to look further back.<br>
                  Nothing here is deleted. Transcripts stay on disk for as long as your agent keeps them.</small>
@@ -630,6 +745,7 @@ html[data-still] .sweep{display:none}
 
     if (result.ok) {
       word(`${result.count} back from the dead. ${result.message || ""}`.trim());
+      setTimeout(run, 260);
       setTimeout(load, 1600);
     } else {
       el.rows.querySelectorAll(".stamp").forEach((node) => node.remove());
