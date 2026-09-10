@@ -63,40 +63,75 @@ def shoot(url: str, out: Path, size: tuple[int, int], *, scale: int = 1,
     sit on an unknown background has to ask for the transparent one.
     """
     out.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            browser(),
-            "--headless=new",
-            "--disable-gpu",
-            "--hide-scrollbars",
-            *(["--default-background-color=00000000"] if transparent else []),
-            f"--screenshot={out}",
-            f"--window-size={size[0]},{size[1]}",
-            f"--force-device-scale-factor={scale}",
-            "--virtual-time-budget=9000",
-            url,
-        ],
-        capture_output=True,
-        timeout=180,
-        check=False,
-    )
+    # A private profile per shot. Sharing the default one, a second launch can
+    # attach to the browser the first left behind instead of starting fresh,
+    # which comes back as a blank or half-drawn frame.
+    with tempfile.TemporaryDirectory() as profile:
+        subprocess.run(
+            [
+                browser(),
+                "--headless=new",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--no-first-run",
+                "--no-default-browser-check",
+                f"--user-data-dir={profile}",
+                *(["--default-background-color=00000000"] if transparent else []),
+                f"--screenshot={out}",
+                f"--window-size={size[0]},{size[1]}",
+                f"--force-device-scale-factor={scale}",
+                "--virtual-time-budget=9000",
+                url,
+            ],
+            capture_output=True,
+            timeout=180,
+            check=False,
+        )
     if not out.exists():
         raise SystemExit(f"Chrome did not produce {out}")
     print(f"  {_pretty(out)}")
 
 
+#: Icon entry sizes, and which drawing each is cut from.
+ICON_PLAN = ((256, ""), (128, ""), (64, ""), (48, ""), (32, "small"), (24, "small"), (16, "small tiny"))
+
+
 def build_icon() -> None:
+    """Draw the icon three ways at 256 and cut every entry from the right one.
+
+    Chrome renders this drawing faithfully at 256 and nowhere else: asked for a
+    smaller window it captures the corner of a full-size icon, and asked through
+    a page that scales it, it returns empty or half-drawn frames above 64px. So
+    the size a frame is meant for picks the variant rather than the viewport.
+    """
     from PIL import Image
 
     print("icon")
+    drawing = (ASSETS / "icon.svg").read_text(encoding="utf-8")
+    cut = {}
     with tempfile.TemporaryDirectory() as tmp:
-        png = Path(tmp) / "icon.png"
-        shoot((ASSETS / "icon.svg").as_uri(), png, (256, 256), transparent=True)
-        image = Image.open(png).convert("RGBA")
-    image.save(ASSETS / "icon.png")
-    image.save(
+        for classes in sorted({classes for _, classes in ICON_PLAN}):
+            source = Path(tmp) / f"icon-{classes.replace(' ', '-') or 'full'}.svg"
+            source.write_text(
+                drawing.replace("<svg ", f'<svg class="{classes}" ', 1) if classes else drawing,
+                encoding="utf-8",
+            )
+            png = source.with_suffix(".png")
+            shoot(source.as_uri(), png, (256, 256), transparent=True)
+            frame = Image.open(png).convert("RGBA").copy()
+            if frame.size != (256, 256):
+                raise SystemExit(f"icon: {classes or 'full'} came back {frame.size}")
+            cut[classes] = frame
+
+    frames = [
+        cut[classes] if size == 256 else cut[classes].resize((size, size), Image.LANCZOS)
+        for size, classes in sorted(ICON_PLAN)
+    ]
+    frames[-1].save(ASSETS / "icon.png")
+    frames[-1].save(
         ASSETS / "icon.ico",
-        sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+        sizes=[(size, size) for size, _ in sorted(ICON_PLAN)],
+        append_images=frames[:-1],
     )
     print(f"  {_pretty(ASSETS / 'icon.ico')}")
 
