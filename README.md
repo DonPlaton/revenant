@@ -103,7 +103,7 @@ To pass a flag through the one-liner:
 curl -fsSL https://raw.githubusercontent.com/DonPlaton/revenant/main/install.sh | bash -s -- --native-window --cli
 ```
 
-`--cli` puts `revenant` on your PATH. `--ref v1.3.0` (`-Ref` on Windows) installs a specific
+`--cli` puts `revenant` on your PATH. `--ref v1.4.0` (`-Ref` on Windows) installs a specific
 version rather than the current main.
 
 On Windows it registers itself under Settings, Apps, so you can remove it there like anything
