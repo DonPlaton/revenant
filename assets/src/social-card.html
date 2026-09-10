@@ -46,8 +46,10 @@
   .track .f{position:absolute;left:0;width:50%;top:7px;height:1px;background:var(--ember)}
   .track .c{position:absolute;left:50%;top:1px;width:2px;height:14px;background:var(--ember)}
   .track .k{position:absolute;top:3px;width:1px;height:8px;background:var(--rule)}
-  .scale{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));font-size:8px;color:var(--ink-3);
-         margin-bottom:14px}
+  /* Each label hangs off the same fraction as its tick, and the end two hang
+     inside the track rather than off its edges. */
+  .scale{position:relative;height:11px;font-size:8px;color:var(--ink-3);margin-bottom:14px}
+  .scale span{position:absolute;top:0;white-space:nowrap}
 
   .reg{position:relative;border-top:1px solid var(--rule)}
   .reg .axis{position:absolute;left:52px;top:0;bottom:0;width:1px;background:var(--rule)}
@@ -69,9 +71,15 @@
   .r .flag{font-size:7.5px;letter-spacing:.16em;color:var(--held);margin-left:8px}
   .r .t{text-align:right;font-size:9px;color:var(--ink-3)}
 
-  .cta{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
-  .cta small{font-size:9.5px;color:var(--ink-3)}
+  .cta{display:flex;align-items:center;margin-top:14px}
+  .cta small{flex:1;font-size:9.5px;color:var(--ink-3);white-space:nowrap}
+  .mode{display:flex;align-items:baseline;gap:8px;margin-right:18px}
+  .mode i{font-style:normal;font-size:7.5px;letter-spacing:.16em;color:var(--ink-3)}
+  .mode b{font-weight:400;font-size:8.5px;color:var(--ink-3);padding:1px 7px 3px;white-space:nowrap;
+          border-bottom:1px solid var(--rule)}
+  .mode b.on{color:var(--ink);border-bottom-color:var(--ember)}
   .btn{background:var(--ember);color:#1c1a18;padding:8px 20px;font-size:10px;letter-spacing:.26em;
+       white-space:nowrap;
        font-weight:500}
 </style>
 </head>
@@ -105,8 +113,15 @@
         <span class="k" style="left:99.7%"></span>
         <span class="c"></span>
       </div>
-      <div class="scale"><span>6h</span><span>1d</span><span>3d</span>
-        <span style="color:#dd7b52">7d</span><span>14d</span><span>30d</span><span>90d</span></div>
+      <div class="scale">
+        <span style="left:0">6h</span>
+        <span style="left:16.6%;transform:translateX(-50%)">1d</span>
+        <span style="left:33.3%;transform:translateX(-50%)">3d</span>
+        <span style="left:50%;transform:translateX(-50%);color:#dd7b52">7d</span>
+        <span style="left:66.6%;transform:translateX(-50%)">14d</span>
+        <span style="left:83.3%;transform:translateX(-50%)">30d</span>
+        <span style="left:99.7%;transform:translateX(-100%)">90d</span>
+      </div>
 
       <div class="reg">
         <span class="axis"></span>
@@ -132,7 +147,11 @@
         </div>
       </div>
 
-      <div class="cta"><small>Two of two marked. One held back.</small><span class="btn">REVIVE 2</span></div>
+      <div class="cta">
+        <small>Two of two marked.</small>
+        <span class="mode"><b class="on">one window</b><b>separate windows</b></span>
+        <span class="btn">REVIVE 2</span>
+      </div>
     </div>
   </div>
 </div>
