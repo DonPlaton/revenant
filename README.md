@@ -334,7 +334,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-296 tests, no network, no real session touched. Everything runs against a synthetic config
+301 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
 terminal backends against both layouts on all three platforms, quoting of paths with spaces and

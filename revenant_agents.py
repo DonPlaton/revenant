@@ -24,6 +24,15 @@ HEAD_LINES = 80
 # Bytes read from the end of a transcript when the prompt index has no entry for it.
 TAIL_BYTES = 256 * 1024
 
+#: How far back to keep widening the search for something the user typed before
+#: giving up on a transcript. Past this the file is pathological and finishing the
+#: scan matters more than the one row.
+SEARCH_CAP = 32 * 1024 * 1024
+
+#: Lines that could carry a Codex prompt, tested as bytes so that widening the
+#: window costs a substring scan rather than a JSON decode per record.
+_CODEX_PROMPT_HINTS = (b"user_message", b'"user"')
+
 #: Claude Code appends the session's name to the transcript whenever it changes,
 #: as one record per kind. Highest priority first: a name the user set with
 #: `/rename` beats a title the model generated, which beats the agent's own name.
@@ -460,21 +469,47 @@ class Codex(Agent):
             return text
         return ""
 
+    def _prompts_near_the_end(self, transcript: Path, window: int) -> list[str]:
+        """What the user typed within the last `window` bytes, in order.
+
+        Codex records each prompt twice, as an event and again as a response
+        item, and the pair is adjacent, so a repeat of the line before it is the
+        same prompt rather than a second one.
+        """
+        prompts: list[str] = []
+        for line in _tail_lines(transcript, window=window):
+            if not any(hint in line for hint in _CODEX_PROMPT_HINTS):
+                continue
+            try:
+                record = json.loads(line.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            text = self._prompt_of(record)
+            if is_meaningful(text) and text != (prompts[-1] if prompts else None):
+                prompts.append(text)
+        return prompts
+
     def tail(self, transcript: Path) -> tuple[str, str, int, bool]:
-        complete = True
         try:
-            complete = transcript.stat().st_size <= TAIL_BYTES
+            size = transcript.stat().st_size
         except OSError:
             return "", "", 0, False
 
-        prompts = [
-            text
-            for record in _tail_records(transcript, window=TAIL_BYTES)
-            if is_meaningful(text := self._prompt_of(record))
-        ]
-        if not prompts:
-            return "", "", 0, complete
-        return (prompts[0] if complete else ""), prompts[-1], len(prompts), complete
+        # A rollout holds thousands of assistant records between two things the
+        # user typed, so a window sized for a chat-shaped transcript can land
+        # wholly inside one answer and come back with nothing to identify the
+        # session by. Widen until something turns up or the file runs out.
+        window = TAIL_BYTES
+        while True:
+            whole = window >= size
+            prompts = self._prompts_near_the_end(transcript, window)
+            if prompts:
+                return (prompts[0] if whole else ""), prompts[-1], len(prompts), whole
+            if whole or window >= SEARCH_CAP:
+                return "", "", 0, whole
+            window *= 8
 
     def history(self, root: Path) -> dict[str, list[tuple[datetime, str, str]]]:
         index: dict[str, list[tuple[datetime, str, str]]] = defaultdict(list)

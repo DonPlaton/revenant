@@ -249,3 +249,97 @@ def test_the_table_names_the_agent_when_several_are_mixed(
     out = capsys.readouterr().out
     assert "AGENT" in out
     assert "Codex" in out and "Claude Code" in out
+
+
+# --------------------------------------------------------------------------- #
+# reading a rollout that does not look like a chat
+# --------------------------------------------------------------------------- #
+def _buried_rollout(root: Path, prompt: str, *, padding: int, twice: bool = False) -> Path:
+    """A rollout whose last prompt is followed by `padding` bytes of answer.
+
+    Real ones look like this: thousands of assistant records between two things
+    the user typed, so the end of the file holds no prompt at all.
+    """
+    directory = root / "sessions" / "2026" / "09" / "11"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"rollout-2026-09-11T10-00-00-{SESSION_A}.jsonl"
+
+    lines = [
+        {
+            "type": "session_meta",
+            "payload": {"session_id": SESSION_A, "cwd": r"D:\dev\thing", "cli_version": "0.153.4"},
+        },
+        {"type": "event_msg", "payload": {"type": "user_message", "message": prompt}},
+    ]
+    if twice:
+        # Codex records the same prompt again as a response item, right after.
+        lines.append({
+            "type": "response_item",
+            "payload": {"type": "message", "role": "user",
+                        "content": [{"type": "input_text", "text": prompt}]},
+        })
+
+    written = sum(len(json.dumps(line, ensure_ascii=False)) + 1 for line in lines)
+    answer = {"type": "event_msg", "payload": {"type": "agent_message", "message": "x" * 900}}
+    each = len(json.dumps(answer)) + 1
+    lines.extend(answer for _ in range(max(1, padding // each)))
+
+    path.write_text(
+        "\n".join(json.dumps(line, ensure_ascii=False) for line in lines) + "\n", encoding="utf-8"
+    )
+    assert path.stat().st_size > written + padding * 0.9
+    return path
+
+
+def test_codex_reaches_past_the_tail_window_for_a_prompt(tmp_path: Path) -> None:
+    """The defect that made Codex sessions list with nothing to identify them by.
+
+    On a real machine the last prompt sat 566KB to 1249KB from the end of the
+    file, against a 256KB window, so every one of those sessions came back blank.
+    """
+    codex = agents.AGENTS["codex"]
+    path = _buried_rollout(tmp_path / ".codex", "read the retry path", padding=agents.TAIL_BYTES * 3)
+
+    first, last, turns, whole = codex.tail(path)
+    assert last == "read the retry path", "the window has to widen until it finds one"
+    assert turns == 1
+    assert whole is True, "the widened window covered the whole file"
+
+
+def test_codex_counts_a_prompt_once_though_it_is_written_twice(tmp_path: Path) -> None:
+    """Every prompt appears as an event and again as a response item."""
+    codex = agents.AGENTS["codex"]
+    path = _buried_rollout(tmp_path / ".codex", "add a test", padding=2048, twice=True)
+
+    _, last, turns, _ = codex.tail(path)
+    assert last == "add a test"
+    assert turns == 1, "the pair is one turn, not two"
+
+
+def test_codex_gives_up_quietly_on_a_rollout_with_no_prompt(tmp_path: Path) -> None:
+    """A transcript of nothing but answers reports nothing, rather than searching forever."""
+    codex = agents.AGENTS["codex"]
+    directory = tmp_path / ".codex" / "sessions" / "2026" / "09" / "11"
+    directory.mkdir(parents=True)
+    path = directory / f"rollout-2026-09-11T10-00-00-{SESSION_A}.jsonl"
+    path.write_text(
+        "\n".join(
+            json.dumps({"type": "event_msg", "payload": {"type": "agent_message", "message": "x" * 400}})
+            for _ in range(200)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert codex.tail(path) == ("", "", 0, True)
+
+
+def test_codex_will_not_read_an_unbounded_amount_looking_for_one(tmp_path: Path, monkeypatch) -> None:
+    """Past the cap the scan matters more than the row."""
+    monkeypatch.setattr(agents, "SEARCH_CAP", agents.TAIL_BYTES)
+    codex = agents.AGENTS["codex"]
+    path = _buried_rollout(tmp_path / ".codex", "buried", padding=agents.TAIL_BYTES * 4)
+
+    first, last, turns, whole = codex.tail(path)
+    assert (first, last, turns) == ("", "", 0)
+    assert whole is False, "it stopped early, so it must not claim it read everything"

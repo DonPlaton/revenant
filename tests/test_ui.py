@@ -57,7 +57,7 @@ def test_one_helper_decides_whether_anything_moves(page: str) -> None:
     same answer, so every flourish asks the same question."""
     assert "const stillness = () => Boolean(document.documentElement.dataset.still) || calm.matches;" in page
     assert 'const calm = matchMedia("(prefers-reduced-motion: reduce)");' in page
-    for gated in ("if (running || stillness()) return;",
+    for gated in ("function run(which) {\n    if (stillness()) return;",
                   "if (stillness() || performance.now() - struck < 55) return;",
                   "if (typed || stillness()) {"):
         assert gated in page, f"ungated: {gated}"
@@ -73,11 +73,22 @@ def test_the_figure_is_animated_in_parts(page: str) -> None:
 
 
 def test_the_run_cleans_up_after_itself(page: str) -> None:
-    body = page.split("function run() {", 1)[1].split("$(\"wordmark\")", 1)[0]
-    for line in ("figure.remove();", "shape.remove();", "for (const crumb of crumbs) crumb.remove();",
-                 'for (const left of lane.querySelectorAll(".crumb")) left.remove();',
-                 "running = false;"):
-        assert line in body, f"missing: {line}"
+    body = page.split("function run(which) {", 1)[1].split("$(\"wordmark\")", 1)[0]
+    # One sweep of the lane, and it iterates a copy: removing from a live
+    # HTMLCollection while walking it leaves every other sprite behind.
+    assert "for (const node of [...lane.children]) node.remove();" in body
+    assert "for (const stale of [...lane.children]) stale.remove();" in body, "a new run clears the old"
+    assert body.count("clear();") >= 2, "both choreographies have to end by clearing"
+
+
+def test_each_agent_tab_gets_its_own_run(page: str) -> None:
+    """The complaint was that the modes were indistinguishable. They are not now."""
+    plans = page.split("const RUNS = {", 1)[1].split("};", 1)[0]
+    assert '"claude-code": { lead: "runner"' in plans, "the revenant is chased"
+    assert 'codex: { lead: "hunter"' in plans, "in Codex the roles swap"
+    assert "all: { meet: true }" in plans, "the combined view is an approach, not a chase"
+    assert "run(agent);\n        load();" in page, "switching tabs has to start one"
+    assert ".runner.ahead .pupil{" in page, "a chasing revenant looks forward"
 
 
 def test_the_cast_draws_only_this_project(page: str) -> None:

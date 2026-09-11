@@ -122,6 +122,14 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 /* Transform and opacity only, so a swallowed crumb never repaints. */
 .crumb.gone{background:var(--codex);animation:swallow 200ms var(--ease) forwards}
 @keyframes swallow{to{transform:scale(2.4);opacity:0}}
+/* Whoever swallowed it flashes its own colour. */
+.crumb.gone.warm{background:var(--ember)}
+/* Chasing rather than fled: the pupils come forward off the back wall of the eye. */
+.runner.ahead .pupil{transform:translateX(-4.6px)}
+/* The pair travel the other way round in the combined view. */
+.runner.rightward,.hunter.rightward{transform-origin:center}
+.runner.rightward .rev,.hunter.rightward .pur{transform:scaleX(-1)}
+.lane .spark{top:16px}
 .chrome{display:flex;gap:6px}
 .chrome button{width:30px;height:24px;display:grid;place-items:center;color:var(--ink-3);
   transition:color 140ms var(--ease),background 140ms var(--ease)}
@@ -500,14 +508,28 @@ html[data-still] .sweep{display:none}
   // Crumbs fall where the runner has been, and the shape behind it is close
   // enough to reach each one a moment later.
   const lane = $("lane");
-  let running = false;
+  let generation = 0;
 
-  function run() {
-    if (running || stillness()) return;
+  // Each tab gets its own run. `lead` is whoever is being chased; `meet` replaces
+  // the chase entirely with an approach from both ends.
+  const RUNS = {
+    "claude-code": { lead: "runner", trail: "hunter", warm: false },
+    codex: { lead: "hunter", trail: "runner", warm: true },
+    all: { meet: true },
+  };
+
+  function run(which) {
+    if (stillness()) return;
     const width = lane.clientWidth;
     if (width < 260) return;
 
-    running = true;
+    // A tab switch mid-run should show the tab you switched to, so the run in
+    // flight is abandoned rather than queued behind.
+    const mine = ++generation;
+    for (const stale of [...lane.children]) stale.remove();
+
+    const plan = RUNS[which] || RUNS["claude-code"];
+
     const figure = document.createElement("span");
     figure.className = "runner";
     figure.innerHTML = FIGURE;
@@ -516,17 +538,65 @@ html[data-still] .sweep{display:none}
     shape.innerHTML = HUNTER;
     lane.append(figure, shape);
 
+    const bob = (done, phase) => Math.sin(done * 31 + phase) * 1.6;
+    const began = performance.now();
+
+    const clear = () => {
+      for (const node of [...lane.children]) node.remove();
+    };
+
+    if (plan.meet) {
+      // They arrive from opposite ends, hold a beat at arm's length, and back off.
+      const middle = width / 2;
+      const ease = (t) => 1 - Math.pow(1 - t, 3);
+      let burst = false;
+
+      const approach = (now) => {
+        if (mine !== generation) return;
+        const done = Math.min(1, (now - began) / 2900);
+        const closing = done < 0.42 ? ease(done / 0.42) : done < 0.66 ? 1 : ease((1 - done) / 0.34);
+        const left = -34 + (middle - 46 + 34) * closing;
+        const right = width + 34 - (width + 34 - (middle + 10)) * closing;
+        figure.style.transform = `translate(${left}px, ${bob(done, 0)}px)`;
+        shape.style.transform = `translate(${right}px, ${bob(done, 2.1)}px)`;
+        // They turn around at the top of the retreat, so nobody reverses facing
+        // the way they came.
+        figure.classList.toggle("rightward", done < 0.66);
+        shape.classList.toggle("rightward", done >= 0.66);
+
+        if (!burst && done > 0.44) {
+          burst = true;
+          for (let i = 0; i < 6; i++) {
+            const bit = document.createElement("i");
+            bit.className = "spark";
+            bit.style.left = `${Math.round(middle - 4)}px`;
+            bit.style.setProperty("--dx", `${(Math.random() * 26 - 13).toFixed(1)}px`);
+            bit.style.setProperty("--dy", `${(Math.random() * 18 - 11).toFixed(1)}px`);
+            lane.appendChild(bit);
+          }
+        }
+        if (done < 1) return requestAnimationFrame(approach);
+        clear();
+      };
+      requestAnimationFrame(approach);
+      return;
+    }
+
+    const lead = plan.lead === "runner" ? figure : shape;
+    const trail = plan.lead === "runner" ? shape : figure;
+    if (plan.lead === "hunter") figure.classList.add("ahead");
+
     const crumbs = [];
     const reach = 74;
     const travel = width + 130;
-    const began = performance.now();
     let last = Infinity;
 
     function step(now) {
+      if (mine !== generation) return;
       const done = Math.min(1, (now - began) / 2400);
       const x = width + 34 - travel * done;
-      figure.style.transform = `translate(${x}px, ${Math.sin(done * 31) * 1.6}px)`;
-      shape.style.transform = `translateX(${x + reach}px)`;
+      lead.style.transform = `translate(${x}px, ${bob(done, 0)}px)`;
+      trail.style.transform = `translate(${x + reach}px, ${bob(done, 1.7)}px)`;
 
       if (x < width && x > -12 && x < last - 16) {
         last = x;
@@ -539,21 +609,17 @@ html[data-still] .sweep{display:none}
       // The oldest crumb lies furthest to the right, so it is always the next one.
       while (crumbs.length && x + reach <= Number.parseFloat(crumbs[0].style.left)) {
         const eaten = crumbs.shift();
-        eaten.className = "crumb gone";
+        eaten.className = plan.warm ? "crumb gone warm" : "crumb gone";
         setTimeout(() => eaten.remove(), 220);
       }
 
       if (done < 1) return requestAnimationFrame(step);
-      figure.remove();
-      shape.remove();
-      for (const crumb of crumbs) crumb.remove();
-      for (const left of lane.querySelectorAll(".crumb")) left.remove();
-      running = false;
+      clear();
     }
     requestAnimationFrame(step);
   }
 
-  $("wordmark").addEventListener("click", run);
+  $("wordmark").addEventListener("click", () => run(agent));
 
   // On open it should be a surprise rather than furniture, so it waits a few
   // hours between runs of its own accord. The wordmark starts one at any time.
@@ -562,7 +628,7 @@ html[data-still] .sweep{display:none}
   try {
     if (Date.now() - Number(localStorage.getItem(RUN_KEY) || 0) > SETTLE) {
       localStorage.setItem(RUN_KEY, String(Date.now()));
-      setTimeout(run, 1500);
+      setTimeout(() => run(agent), 1500);
     }
   } catch (e) { /* storage is off; the wordmark still works */ }
 
@@ -702,6 +768,7 @@ html[data-still] .sweep{display:none}
       node.addEventListener("click", () => {
         if (node.dataset.key === agent) return;
         agent = node.dataset.key;
+        run(agent);
         load();
       });
     });
@@ -916,7 +983,7 @@ html[data-still] .sweep{display:none}
 
     if (result.ok) {
       word(`${result.count} back from the dead. ${result.message || ""}`.trim());
-      setTimeout(run, 260);
+      setTimeout(() => run(agent), 260);
       setTimeout(load, 1600);
     } else {
       el.rows.querySelectorAll(".stamp").forEach((node) => node.remove());
