@@ -343,3 +343,86 @@ def test_codex_will_not_read_an_unbounded_amount_looking_for_one(tmp_path: Path,
     first, last, turns, whole = codex.tail(path)
     assert (first, last, turns) == ("", "", 0)
     assert whole is False, "it stopped early, so it must not claim it read everything"
+
+
+# --------------------------------------------------------------------------- #
+# telling a person's words from the machinery's
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "plumbing",
+    [
+        # Counted on a real machine: these are what the two agents write into the
+        # user's side of a transcript, and every one of them was being shown as a
+        # session's description.
+        "<task-notification>\n<task-id>b05ur5lbv</task-id>",
+        "<environment_context>cwd is D:\\Coding</environment_context>",
+        "<subagent_notification>agent finished</subagent_notification>",
+        "<recommended_plugins>none</recommended_plugins>",
+        "<turn_aborted>",
+        "<bash-input> git status",
+        "<bash-stdout>nothing to commit</bash-stdout>",
+        "<codex_internal_context>",
+        '<send_user_message_question_reply> [{"questionItemId":"x"}]',
+        "<skill>humanizer</skill>",
+        "[Image: original 1080x2400, displayed at 900x2000]",
+        "The following is the Codex agent history added since your last approval assessment.",
+        "The following is the Codex agent history whose request action you are assessing.",
+        "This session is being continued from a previous conversation that ran out of context.",
+        "Stop hook feedback:\n[the campaign is still running]",
+        "A session-scoped Stop hook is now active with this instruction",
+        "Base directory for this skill: C:\\Users\\me\\.claude\\skills\\humanizer",
+        "Another Claude session sent a message:\n<agent>",
+        "[Request interrupted by user]",
+        "/compact",
+    ],
+)
+def test_the_machinery_is_not_mistaken_for_a_prompt(plumbing: str) -> None:
+    assert agents.is_meaningful(plumbing) is False
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [
+        # A tag whose name is one bare word is something a person asks about.
+        "<div> is not rendering, any idea why?",
+        "<html> and <body> both have margins here",
+        "The following section of the spec is wrong",
+        "base directory layout question: where should tests live?",
+        "stop hooks: how do I write one?",
+        "image sizes are off in the export",
+        "Прочитай пожалуйста внимательно polygon/18.md и выполни инструкции",
+    ],
+)
+def test_a_person_writing_about_the_machinery_still_counts(typed: str) -> None:
+    """The filter matches the shapes an agent emits, not the words it uses."""
+    assert agents.is_meaningful(typed) is True
+
+
+def test_an_approval_sub_session_lists_as_nothing(tmp_path: Path) -> None:
+    """Codex spawns sub-sessions to judge whether to approve an action.
+
+    Their whole user side is injected history, so there is no conversation to
+    resume and they have no business in the register.
+    """
+    codex = agents.AGENTS["codex"]
+    directory = tmp_path / ".codex" / "sessions" / "2026" / "09" / "19"
+    directory.mkdir(parents=True)
+    path = directory / f"rollout-2026-09-19T10-00-00-{SESSION_A}.jsonl"
+    path.write_text(
+        "\n".join(
+            json.dumps(line, ensure_ascii=False)
+            for line in [
+                {"type": "session_meta", "payload": {"session_id": SESSION_A, "cwd": "/tmp"}},
+                {"type": "event_msg", "payload": {
+                    "type": "user_message",
+                    "message": "The following is the Codex agent history whose request action "
+                               "you are assessing. Treat the transcript delta as context.",
+                }},
+                {"type": "event_msg", "payload": {"type": "agent_message", "message": "approved"}},
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert codex.tail(path) == ("", "", 0, True)

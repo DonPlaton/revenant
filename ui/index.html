@@ -365,7 +365,7 @@ html[data-still] .sweep{display:none}
       <span class="lit" id="lit"></span>
       <span class="ticks" id="ticks" aria-hidden="true"></span>
       <span class="caret" id="caret"></span>
-      <input type="range" id="range" min="0" max="6" step="1" value="3"
+      <input type="range" id="range" min="0" max="7" step="1" value="3"
              aria-label="How far back to look" aria-valuetext="seven days">
     </div>
     <div class="marks" id="marks"></div>
@@ -411,6 +411,7 @@ html[data-still] .sweep{display:none}
     { days: 14, mark: "14d", said: "two weeks" },
     { days: 30, mark: "30d", said: "one month" },
     { days: 90, mark: "90d", said: "three months" },
+    { days: 36500, mark: "all", said: "everything on disk" },
   ];
   const WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
                  "Ten", "Eleven", "Twelve"];
@@ -745,7 +746,7 @@ html[data-still] .sweep{display:none}
     }
 
     el.where.textContent = document.documentElement.dataset.still
-      ? "Reading transcripts in ~/.claude"
+      ? `Reading transcripts in ${data.agent === "codex" ? "~/.codex" : "~/.claude"}`
       : `Reading transcripts in ${data.root}`;
 
     const all = data.sessions || [];

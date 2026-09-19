@@ -49,6 +49,18 @@ def test_the_slider_thumb_does_not_inset_its_own_travel(page: str) -> None:
     assert "input[type=range]::-moz-range-thumb{width:1px" in page
 
 
+def test_the_ruler_can_reach_everything_on_disk(page: str) -> None:
+    """Sessions older than the furthest stop were unreachable from the app.
+
+    On a real machine 61 of 162 Codex transcripts sat past ninety days, and the
+    command line could list them while the window could not.
+    """
+    stops = page.split("const STOPS = [", 1)[1].split("];", 1)[0]
+    assert '{ days: 36500, mark: "all", said: "everything on disk" }' in stops
+    assert stops.count("days:") == 8
+    assert 'min="0" max="7" step="1"' in page, "the range has to span every stop"
+
+
 # --------------------------------------------------------------------------- #
 # the cast and its five moments
 # --------------------------------------------------------------------------- #
