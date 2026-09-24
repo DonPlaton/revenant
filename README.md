@@ -250,14 +250,14 @@ work out what is alive right now.
 
 ## What it costs
 
-Measured on 34 transcripts totalling 534 MB, on an eight core desktop:
+Measured on 45 transcripts totalling 1.1 GB, on an eight core desktop:
 
 | | |
 |---|---|
-| scan a seven day window, named and ready to show | 20 ms |
-| scan everything on disk | 28 ms, or 21 ms once the names are known |
+| scan a seven day window, named and ready to show | 71 ms |
+| scan everything on disk | 71 ms |
 | repeat request in the app | 0.2 ms, served from an eight second cache |
-| peak Python heap for a full scan | 0.95 MB |
+| peak Python heap for a full scan | 11 MB |
 | the app while you look at it | 0.3% of one core |
 
 Liveness is the part that could have been slow. Shelling out to `tasklist` and walking all 428
@@ -265,6 +265,12 @@ processes on the machine costs half a second, so Revenant asks the kernel about 
 process ids in the registry instead, which takes 0.2 ms. Reading a transcript stops at the first
 record that answers the question, one pass over the end of a file collects both the last prompts
 and the session's name, and a name already read is not read again.
+
+A transcript is read from its end, because that is where the answers usually are. Usually is not
+always: a long agentic run can put megabytes of tool traffic between two things you typed, so when
+the first window comes back with nothing the search widens until it finds a prompt or runs out of
+file. That costs real time on the few transcripts that need it, which is where most of the 71 ms
+above goes, and it is the difference between listing such a session and hiding it.
 
 The desktop window is a WebView2 or WebKit surface, so it holds around 430 MB while it is open,
 the same as any browser-backed app. It is meant to be opened, used for ten seconds and closed, and
@@ -334,7 +340,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-330 tests, no network, no real session touched. Everything runs against a synthetic config
+333 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
 terminal backends against both layouts on all three platforms, quoting of paths with spaces and

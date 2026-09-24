@@ -331,21 +331,11 @@ class ClaudeCode(Agent):
                 break
         return meta
 
-    def tail(self, transcript: Path) -> tuple[str, str, int, bool]:
-        """The prompts, and the session's name as a side effect.
-
-        One pass over one window answers both questions, so `title()` below finds
-        the answer waiting for it instead of reading the same bytes again.
-        """
-        complete = True
-        try:
-            complete = transcript.stat().st_size <= TAIL_BYTES
-        except OSError:
-            return "", "", 0, False
-
+    def _read_tail(self, transcript: Path, window: int) -> tuple[list[str], dict[str, str]]:
+        """What the user typed within the last `window` bytes, and any names seen."""
         prompts: list[str] = []
         names: dict[str, str] = {}
-        for record in _tail_records(transcript, window=TAIL_BYTES):
+        for record in _tail_records(transcript, window=window):
             kind = record.get("type")
             if kind in _TITLE_TYPES:
                 _collect_title(record, names)
@@ -354,15 +344,43 @@ class ClaudeCode(Agent):
                 continue
             content = (record.get("message") or {}).get("content")
             if isinstance(content, list):
+                # Tool results come back as user-role messages too, and carry no
+                # text part, so they flatten to nothing and fall away below.
                 content = " ".join(p.get("text", "") for p in content if isinstance(p, dict))
             text = clean_prompt(content)
             if is_meaningful(text):
                 prompts.append(text)
+        return prompts, names
+
+    def tail(self, transcript: Path) -> tuple[str, str, int, bool]:
+        """The prompts, and the session's name as a side effect.
+
+        One pass over one window answers both questions, so `title()` below finds
+        the answer waiting for it instead of reading the same bytes again.
+
+        A long agentic run puts thousands of tool results between two things the
+        user typed, and the end of such a file holds none of the latter. The
+        window widens until it finds one rather than reporting an empty session.
+        """
+        try:
+            size = transcript.stat().st_size
+        except OSError:
+            return "", "", 0, False
+
+        window = TAIL_BYTES
+        names: dict[str, str] = {}
+        while True:
+            whole = window >= size
+            prompts, seen = self._read_tail(transcript, window)
+            names = seen or names
+            if prompts or whole or window >= SEARCH_CAP:
+                break
+            window *= 8
 
         _remember_title(_stamp(transcript), _best_title(names))
         if not prompts:
-            return "", "", 0, complete
-        return (prompts[0] if complete else ""), prompts[-1], len(prompts), complete
+            return "", "", 0, whole
+        return (prompts[0] if whole else ""), prompts[-1], len(prompts), whole
 
     def title(self, transcript: Path) -> str:
         """The name shown in Claude Code's own session picker.

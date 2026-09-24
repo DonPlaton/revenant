@@ -426,3 +426,49 @@ def test_an_approval_sub_session_lists_as_nothing(tmp_path: Path) -> None:
     )
 
     assert codex.tail(path) == ("", "", 0, True)
+
+
+def test_claude_code_reaches_past_the_tail_window_for_a_prompt(tmp_path: Path) -> None:
+    """A long agentic run ends in tool results, not in anything the user typed.
+
+    Measured on a real 7.1MB transcript: every user-role record in the last
+    256KB carried tool_result blocks, and the nearest real prompt was 478KB from
+    the end. The session listed as empty and was dropped.
+    """
+    cc = agents.AGENTS["claude-code"]
+    directory = tmp_path / ".claude" / "projects" / "D--dev-thing"
+    directory.mkdir(parents=True)
+    path = directory / f"{SESSION_A}.jsonl"
+
+    lines = [
+        {"type": "user", "cwd": r"D:\dev\thing", "sessionId": SESSION_A,
+         "message": {"role": "user", "content": "find the retry path"}},
+    ]
+    # Bury it under more tool traffic than the window can see past.
+    result = {"type": "user", "sessionId": SESSION_A,
+              "message": {"role": "user", "content": [{"type": "tool_result", "content": "x" * 900}]}}
+    each = len(json.dumps(result)) + 1
+    lines.extend(result for _ in range((agents.TAIL_BYTES * 3) // each))
+
+    path.write_text("\n".join(json.dumps(r) for r in lines) + "\n", encoding="utf-8")
+    assert path.stat().st_size > agents.TAIL_BYTES * 2
+
+    first, last, turns, whole = cc.tail(path)
+    assert last == "find the retry path", "the window has to widen until it finds one"
+    assert turns == 1
+    assert whole is True
+
+
+def test_a_tool_result_is_not_a_prompt(tmp_path: Path) -> None:
+    """They arrive as user-role records and carry no text part."""
+    cc = agents.AGENTS["claude-code"]
+    directory = tmp_path / ".claude" / "projects" / "D--dev-thing"
+    directory.mkdir(parents=True)
+    path = directory / f"{SESSION_B}.jsonl"
+    path.write_text(
+        json.dumps({"type": "user", "sessionId": SESSION_B,
+                    "message": {"role": "user",
+                                "content": [{"type": "tool_result", "content": "ok"}]}}) + "\n",
+        encoding="utf-8",
+    )
+    assert cc.tail(path) == ("", "", 0, True)

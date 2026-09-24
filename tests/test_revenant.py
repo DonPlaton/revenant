@@ -393,8 +393,31 @@ def test_latest_per_dir_keeps_newest(root: Path) -> None:
     assert len(alpha) == 1 and alpha[0].session_id.startswith("11111111")
 
 
-def test_min_turns_drops_empty_sessions(root: Path) -> None:
-    _transcript(root, "D--Coding-gamma", "55555555-5555-5555-5555-555555555555", r"D:\Coding\gamma", age_hours=1)
+def _prompt_free_transcript(root: Path, slug: str, session_id: str, cwd: str) -> Path:
+    """A transcript with no typed prompt in it: only plumbing and a tool result.
+
+    Tool results come back as user-role records, which is exactly what made a
+    busy session look empty.
+    """
+    directory = root / "projects" / slug
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{session_id}.jsonl"
+    stamp = (NOW - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    records = [
+        {"type": "user", "cwd": cwd, "timestamp": stamp, "sessionId": session_id, "isMeta": True,
+         "message": {"role": "user", "content": "<local-command-caveat>ignore me</local-command-caveat>"}},
+        {"type": "user", "cwd": cwd, "timestamp": stamp, "sessionId": session_id,
+         "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}},
+    ]
+    path.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n", encoding="utf-8")
+    moment = (NOW - timedelta(hours=1)).timestamp()
+    os.utime(path, (moment, moment))
+    return path
+
+
+def test_min_turns_drops_a_session_with_nothing_in_it(root: Path) -> None:
+    """Nothing typed anywhere: not in the index, not in the transcript."""
+    _prompt_free_transcript(root, "D--Coding-gamma", "55555555-5555-5555-5555-555555555555", r"D:\Coding\gamma")
     _history(
         root,
         [
@@ -406,6 +429,23 @@ def test_min_turns_drops_empty_sessions(root: Path) -> None:
     assert any(s.turns == 0 for s in sessions)
     assert all(s.turns != 0 for s in revenant.filter_sessions(sessions, min_turns=1))
     assert any(s.turns == 0 for s in revenant.filter_sessions(sessions, min_turns=0))
+
+
+def test_an_index_holding_only_slash_commands_does_not_hide_the_session(root: Path) -> None:
+    """The fault that made a 7MB session vanish from the register.
+
+    Claude Code's history index held one entry for it, `/rename Bug_Bounty`,
+    which has always been filtered out. With nothing meaningful left the session
+    was recorded as zero turns and dropped, though its transcript was full.
+    """
+    _transcript(root, "D--Coding-gamma", "55555555-5555-5555-5555-555555555555", r"D:\Coding\gamma", age_hours=1)
+    _history(root, [("55555555-5555-5555-5555-555555555555", "/rename gamma", r"D:\Coding\gamma", 1.0)])
+
+    sessions = revenant.scan_sessions(root, since=revenant.parse_when("24h"))
+    gamma = next(s for s in sessions if s.session_id.startswith("55555555"))
+    assert gamma.turns == 1, "the transcript has one real prompt in it"
+    assert gamma.last_prompt == "real question about the code"
+    assert any(s.session_id.startswith("55555555") for s in revenant.filter_sessions(sessions, min_turns=1))
 
 
 def test_limit(root: Path) -> None:

@@ -416,14 +416,20 @@ def scan_sessions(
         session.git_branch = meta.get("gitBranch")
         session.started_at = meta.get("started")
 
+        meaningful: list[str] = []
         if entries:
             meaningful = [prompt for _, prompt, _ in entries if is_meaningful(prompt)]
-            session.turns = len(meaningful)
-            session.first_prompt = meaningful[0] if meaningful else entries[0][1]
-            session.last_prompt = meaningful[-1] if meaningful else entries[-1][1]
             if session.cwd is None and entries[0][2]:
                 session.cwd = Path(entries[0][2])
+
+        if meaningful:
+            session.turns = len(meaningful)
+            session.first_prompt, session.last_prompt = meaningful[0], meaningful[-1]
         else:
+            # An index that holds a session's slash commands and nothing else is
+            # not the same as a session with nothing in it, so the transcript
+            # still gets read rather than the session being recorded as empty and
+            # dropped for having too few turns.
             first, last, count, complete = agent.tail(transcript)
             session.first_prompt, session.last_prompt = first, last
             # An incomplete tail gives only a lower bound, so leave it unknown.
