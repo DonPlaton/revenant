@@ -327,6 +327,124 @@ def test_the_shuffle_is_composed_above_the_toast(page: str) -> None:
     assert "below," in dealer
 
 
+def test_the_request_carries_what_was_on_screen_at_the_click(page: str) -> None:
+    """The ruler, the agent tab and the layout can all change during the wait;
+    the deal draws the layout of the click, so that is the one that is sent."""
+    body = _revive_handler(page)
+    captured = body.index("const sent = { ids, days: stop().days, agent, layout };")
+    assert captured < body.index("await (show ? show.launch")
+    assert "body: JSON.stringify(sent)," in body
+
+
+def test_cards_are_dealt_in_the_order_the_terminals_open(page: str) -> None:
+    """The backend opens tabs in the order of the ids, and the last one opened
+    is in front. The k-th card off the deck lands in the k-th slot."""
+    engine = _shuffle_engine(page)
+    assert "const rank = (id) => order2.length - 1 - order2.indexOf(id);" in engine
+    assert "const dealtAt = (slot) => T.launch + slot * DEAL;" in engine
+    assert "const go = dealtAt(rank(id));" in engine
+    assert "const front = SHOWN - 1;" in engine
+
+
+def test_the_deck_is_gathered_from_the_marked_rows(page: str) -> None:
+    """Cards that appear from nowhere could be anything; lifted off the marks,
+    they are visibly the sessions that were chosen."""
+    dealer = _dealer(page)
+    assert "node.getBoundingClientRect().top - top + 17.5" in dealer, "measured by the row box"
+    assert "origins," in dealer
+    assert '<b class="sh-seed"></b>' in _shuffle_engine(page)
+
+
+def test_the_destination_shows_its_empty_slots_first(page: str) -> None:
+    """Slots drawn dead at the tap, lit as they fill, tell the viewer where the
+    cards are going before the first one arrives. More than twelve says so."""
+    assert ".sh-tab.sh-live{" in page and ".sh-hole{" in page
+    engine = _shuffle_engine(page)
+    assert 'tab.classList.toggle("sh-live", live)' in engine
+    assert "tail.textContent = `+${more}`;" in engine
+
+
+def test_the_masthead_waits_for_the_deal_to_land(page: str) -> None:
+    success = _revive_handler(page).split("if (result.ok) {", 1)[1].split("} else {", 1)[0]
+    assert "(show ? show.ended : Promise.resolve()).then(" in success
+
+
+def test_nothing_leaves_a_veil_over_the_register(page: str) -> None:
+    """A frame that throws, frames that stop, or motion switched off mid-deal
+    all end the scene; otherwise the rows would stay hidden behind it."""
+    engine = _shuffle_engine(page)
+    assert "if (stillness()) return finish();" in engine
+    assert "} catch (e) {\n        return finish();" in engine
+    assert "guard = setTimeout(() => show.stop(), show.END + 1500);" in _dealer(page)
+
+
+_SCENE_HARNESS = r"""
+const fake = () => {
+  const el = {
+    style: { setProperty() {} }, dataset: {}, textContent: "", innerHTML: "",
+    clientWidth: 0, clientHeight: 0,
+    classList: { set: new Set(), contains(c) { return this.set.has(c); },
+                 toggle(c, on) { on ? this.set.add(c) : this.set.delete(c); } },
+    setAttribute() {}, appendChild() {}, querySelector: () => fake(),
+    querySelectorAll: () => [fake(), fake()],
+  };
+  let first = null;
+  Object.defineProperty(el, "firstChild", { get: () => (first = first || fake()) });
+  return el;
+};
+globalThis.document = { createElement: fake };
+globalThis.requestAnimationFrame = () => 0;
+const stillness = () => false;
+%ENGINE%
+let frames = 0;
+for (const layout of ["tabs", "windows"]) {
+  for (const count of [6, 9, 12, 17]) {
+    for (const withOrigins of [true, false]) {
+      for (const [w, h] of [[902, 398], [662, 238], [1822, 758]]) {
+        const host = fake();
+        host.clientWidth = w; host.clientHeight = h;
+        const agents = [...Array(count)].map((_, i) => (i % 3 === 1 ? "codex" : "claude-code"));
+        const show = startShuffle(host, {
+          count, layout, figure: "", agents, names: agents.map((a, i) => `s${i}`), below: 48,
+          origins: withOrigins ? agents.slice(0, 12).map((_, i) => ({ x: 74, y: 17.5 + 96 * i })) : undefined,
+        });
+        for (let t = 0; t <= show.END + 40; t += 8) { show.render(t); frames++; }
+        show.fail();
+        show.render(show.END);
+      }
+    }
+  }
+}
+console.log("frames", frames);
+"""
+
+
+def test_every_frame_of_the_scene_renders(page: str, tmp_path) -> None:
+    """The frame loop catches a throw and ends the scene, which keeps the app
+    working but hides the bug: a renamed variable once ended every deal at the
+    first card. Here every frame of every layout and size is drawn in node
+    against a stand-in DOM, and a throw fails the test."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    engine = page.split("  const SHUFFLE_FROM = 6;", 1)[1].split("  // Lays the stage over the register", 1)[0]
+    script = tmp_path / "scene.js"
+    script.write_text(_SCENE_HARNESS.replace("%ENGINE%", engine), encoding="utf-8")
+    ran = subprocess.run([node, str(script)], capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stderr.strip()
+    assert ran.stdout.startswith("frames ")
+
+
+def test_no_top_level_name_is_declared_twice(page: str) -> None:
+    """node --check catches a second const, but a second function declaration
+    silently replaces the first, which is worse."""
+    script = "\n".join(re.findall(r"<script>(.*?)</script>", page, re.S))
+    names = re.findall(r"^  (?:const|let|var)\s+([A-Za-z_$][\w$]*)", script, re.M)
+    names += re.findall(r"^  (?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)", script, re.M)
+    twice = sorted({n for n in names if names.count(n) > 1})
+    assert not twice, f"declared more than once at the top level: {twice}"
+
+
 def test_the_shuffling_figure_is_the_icon_with_its_eyes_shut(page: str) -> None:
     """Derived from FIGURE at load, so each replacement has to find its mark:
     a silent miss would leave the speed lines on, or no shut eyes to swap in."""

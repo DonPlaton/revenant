@@ -279,6 +279,8 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 /* A card is a terminal seen from across the room: a lit screen in a bezel. */
 .sh-card{border-radius:4px;background:#24201c;border:1px solid rgba(238,234,225,.28);overflow:hidden;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 10px 20px -12px rgba(0,0,0,.85)}
+/* Before it unfolds, a card is the mark it was lifted from. */
+.sh-seed{position:absolute;inset:0;background:var(--accent);z-index:2}
 .sh-card .sh-bar{position:absolute;left:0;right:0;top:0;height:12px;background:#2e2925;
   border-bottom:1px solid rgba(238,234,225,.1)}
 .sh-dot{position:absolute;left:6px;top:4px;width:4px;height:4px;border-radius:50%;background:var(--accent)}
@@ -292,8 +294,15 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
   box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 24px 50px -26px rgba(0,0,0,.95)}
 .sh-strip{position:absolute;left:0;right:0;top:0;height:26px;background:#24201c;
   border-bottom:1px solid rgba(238,234,225,.12)}
-.sh-tab{position:absolute;top:6px;height:20px;border-radius:3px 3px 0 0;background:#2e2925;
-  border:1px solid rgba(238,234,225,.12);border-bottom:0}
+/* An empty slot is drawn the way the infographic draws a dead terminal:
+   dashed and hatched. It turns solid when its card lands. */
+.sh-tab,.sh-hole{position:absolute;border:1px dashed #4a3229;
+  background:repeating-linear-gradient(135deg,#241f1d 0 4px,#1d1917 4px 8px)}
+.sh-tab{top:6px;height:20px;border-radius:3px 3px 0 0;border-bottom:0}
+.sh-tab.sh-live{background:#2e2925;border:1px solid rgba(238,234,225,.12);border-bottom:0}
+.sh-tab:not(.sh-live) i{opacity:0}
+.sh-hole{left:0;top:0;border-radius:5px}
+.sh-more{position:absolute;font:600 11px/1 var(--mono);color:var(--ink-2);white-space:nowrap}
 /* A tab lights in its card's colour as the card lands in it. */
 .sh-glow{position:absolute;inset:0;border-radius:inherit;background:var(--accent);opacity:0}
 .sh-tab i{position:absolute;left:50%;top:7px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;
@@ -1097,8 +1106,26 @@ html[data-still] .sweep{display:none}
     const mouth = figure.querySelector(".mouth");
 
     const accent = (i) => `var(--${opts.agents[i] === "codex" ? "codex" : "ember"})`;
+
+    // The riffle: cut into halves and interleave them, twice.
+    const riffle = (order) => {
+      const half = Math.ceil(order.length / 2), L = order.slice(0, half), R = order.slice(half), out = [];
+      for (let i = 0; i < half; i++) {
+        if (L[i] !== undefined) out.push(L[i]);
+        if (R[i] !== undefined) out.push(R[i]);
+      }
+      return out;
+    };
+    const order0 = [...Array(SHOWN).keys()];
+    const order1 = riffle(order0);
+    const order2 = riffle(order1);
+    // Cards come off the top of the deck in the order the terminals open, so
+    // the k-th card dealt is the k-th session and lands in the k-th slot. The
+    // riffle is fixed, so each card knows from the start which one it will be.
+    const rank = (id) => order2.length - 1 - order2.indexOf(id);
+    const more = N - SHOWN;
     let win = null, screen = null;
-    const tabs = [], minis = [];
+    const tabs = [], minis = [], holes = [];
     if (LAYOUT === "tabs") {
       win = document.createElement("div");
       win.className = "sh-win";
@@ -1106,7 +1133,7 @@ html[data-still] .sweep{display:none}
       win.innerHTML = `<div class="sh-strip"></div><div class="sh-screen"><b>&gt;</b> ` +
         `<span class="sh-typed"></span><span class="sh-cursor"></span>\n<span class="sh-said"></span></div>`;
       const strip = win.querySelector(".sh-strip");
-      const slot = Math.min(34, (WIN.w - 16) / SHOWN);
+      const slot = Math.min(34, (WIN.w - 16 - (more > 0 ? 30 : 0)) / SHOWN);
       for (let i = 0; i < SHOWN; i++) {
         const tab = document.createElement("div");
         tab.className = "sh-tab";
@@ -1115,6 +1142,13 @@ html[data-still] .sweep{display:none}
         tab.dataset.cx = 8 + i * slot + (slot - 3) / 2;
         strip.appendChild(tab);
         tabs.push(tab);
+      }
+      if (more > 0) {
+        const tail = document.createElement("span");
+        tail.className = "sh-more";
+        tail.style.cssText = `left:${12 + SHOWN * slot}px;top:11px`;
+        tail.textContent = `+${more}`;
+        strip.appendChild(tail);
       }
       screen = { typed: win.querySelector(".sh-typed"), said: win.querySelector(".sh-said") };
       scene.appendChild(win);
@@ -1132,8 +1166,22 @@ html[data-still] .sweep{display:none}
         m.dataset.x = dest.x + (col - (inRow - 1) / 2) * (MINI.w + 14) + (row % 2 ? 7 : -7);
         m.dataset.y = dest.y + (row - (rows - 1) / 2) * (MINI.h + 16);
         m.dataset.r = (((i * 37) % 7) - 3) * 0.8;
+        const hole = document.createElement("i");
+        hole.className = "sh-hole";
+        hole.style.cssText = `width:${MINI.w}px;height:${MINI.h}px;transform:translate(` +
+          `${m.dataset.x - MINI.w / 2}px, ${m.dataset.y - MINI.h / 2}px) rotate(${m.dataset.r}deg)`;
+        scene.appendChild(hole);
+        holes.push(hole);
         scene.appendChild(m);
         minis.push(m);
+      }
+      if (more > 0) {
+        const tail = document.createElement("span");
+        tail.className = "sh-more";
+        tail.style.cssText = `left:${dest.x - 10}px;top:${dest.y + (rows / 2) * (MINI.h + 16) + 2}px`;
+        tail.textContent = `+${more}`;
+        scene.appendChild(tail);
+        holes.push(tail);
       }
     }
 
@@ -1141,25 +1189,19 @@ html[data-still] .sweep{display:none}
     for (let i = 0; i < SHOWN; i++) {
       const c = document.createElement("div");
       c.className = "sh-card";
-      c.style.cssText = `width:${CW}px;height:${CH}px;--accent:${accent(i)}`;
-      c.innerHTML = `<i class="sh-bar"></i><i class="sh-dot"></i><b class="sh-prompt">&gt;_</b>` +
-                    `<i class="sh-ln sh-ln-a"></i><i class="sh-ln sh-ln-b"></i>`;
+      c.style.cssText = `width:${CW}px;height:${CH}px;--accent:${accent(rank(i))}`;
+      c.innerHTML = `<b class="sh-seed"></b><i class="sh-bar"></i><i class="sh-dot"></i>` +
+                    `<b class="sh-prompt">&gt;_</b><i class="sh-ln sh-ln-a"></i><i class="sh-ln sh-ln-b"></i>`;
       scene.appendChild(c);
       cards.push(c);
     }
 
-    // The riffle: cut into halves and interleave them, twice.
-    const riffle = (order) => {
-      const half = Math.ceil(order.length / 2), L = order.slice(0, half), R = order.slice(half), out = [];
-      for (let i = 0; i < half; i++) {
-        if (L[i] !== undefined) out.push(L[i]);
-        if (R[i] !== undefined) out.push(R[i]);
-      }
-      return out;
+    // Where each card starts: on the mark of its own row, measured by the
+    // caller in stage pixels and brought into the scaled scene here.
+    const origin = (id) => {
+      const o = opts.origins && opts.origins[rank(id)];
+      return o ? { x: (o.x - ox) / k, y: o.y / k } : null;
     };
-    const order0 = [...Array(SHOWN).keys()];
-    const order1 = riffle(order0);
-    const order2 = riffle(order1);
     // A deck shows its edge: each card sits 2.4 px above the one beneath it.
     const stackPos = (k) => ({ x: deck.x + k * 0.5, y: deck.y - k * 2.4 });
     // Halves held apart and bowed inward, the way two hands bend them first.
@@ -1191,15 +1233,15 @@ html[data-still] .sweep{display:none}
       return phase < 0.22 ? ease(phase / 0.22) : 1 - inOut((phase - 0.22) / 0.78);
     }
 
-    // The tab in front is the last card dealt, and the window types the command
+    // The tab in front is the last one opened, and the window types the command
     // that resumes it, in its own agent's words and colour.
-    const front = order2[0];
+    const front = SHOWN - 1;
     const typed = opts.agents[front] === "codex" ? "codex resume" : "claude --resume";
     if (win) {
       win.style.setProperty("--accent", accent(front));
       screen.said.textContent = opts.names[front] || "";
     }
-    const dealtAt = (id) => T.launch + (order2.length - 1 - order2.indexOf(id)) * DEAL;
+    const dealtAt = (slot) => T.launch + slot * DEAL;
     // A failed launch cuts the scene short: everything fades from wherever it is.
     let fadeFrom = END - 240;
 
@@ -1235,6 +1277,10 @@ html[data-still] .sweep{display:none}
 
       // The destination comes in on the tap: until then the shuffle has the stage.
       const destIn = ease(span(t, T.square, T.square + 280));
+      holes.forEach((hole, i) => {
+        const filled = i < minis.length ? ease(span(t, dealtAt(i) + FLIGHT * 0.86, dealtAt(i) + FLIGHT + 80)) : 0;
+        hole.style.opacity = (destIn * (1 - filled) * out).toFixed(3);
+      });
       if (win) {
         win.style.opacity = (destIn * out).toFixed(3);
         win.style.transform = `translate(${dest.x - WIN.w / 2}px, ` +
@@ -1245,57 +1291,73 @@ html[data-still] .sweep{display:none}
       cards.forEach((card, id) => {
         const p = t < T.split2 ? riffleCard(id, order0, order1, T.split1, T.riffle1, t)
                                : riffleCard(id, order1, order2, T.split2, T.riffle2, t);
-        let x = p.x, y = p.y, r = p.r || 0, s = 1, o = deckIn;
-        if (t < 380) { y += (1 - deckIn) * 18; s = lerp(0.72, 1, deckIn); }
+        let x = p.x, y = p.y, r = p.r || 0, sx = 1, sy = 1, o = deckIn, seed = 0;
+        const from0 = origin(id);
+        if (from0) {
+          // Gathered row by row, top to bottom: each mark lifts off its row,
+          // unfolds into a terminal on the way and drops onto the deck.
+          const g0 = 20 + rank(id) * (90 / Math.max(1, SHOWN - 1));
+          const pg = ease(span(t, g0, g0 + 170));
+          o = 1;
+          x = lerp(from0.x, p.x, pg);
+          y = lerp(from0.y, p.y, pg) - arc(pg) * 30;
+          r = lerp(0, r, pg) - arc(pg) * 6;
+          sx = lerp(9 / CW, 1, pg);
+          sy = lerp(9 / CH, 1, pg);
+          seed = 1 - span(pg, 0.25, 0.8);
+        } else if (t < 380) {
+          y += (1 - deckIn) * 18;
+          sx = sy = lerp(0.72, 1, deckIn);
+        }
+        const seedOpacity = String(Math.round(seed * 100) / 100);
+        if (card.firstChild.style.opacity !== seedOpacity) card.firstChild.style.opacity = seedOpacity;
         // Squared up: the stack compresses and lifts on the tap.
         if (t >= T.square && t < T.launch) y -= arc(span(t, T.square, T.launch)) * 4;
 
-        const go = dealtAt(id);
+        const go = dealtAt(rank(id));
         if (t >= go) {
           const pf = span(t, go, go + FLIGHT), pe = ease(pf);
           const from = stackPos(order2.indexOf(id));
+          const slot = rank(id);
           let tx, ty, ts, tr;
           if (win) {
-            tx = dest.x - WIN.w / 2 + Number(tabs[id].dataset.cx);
+            tx = dest.x - WIN.w / 2 + Number(tabs[slot].dataset.cx);
             ty = dest.y - WIN.h / 2 + 13;
             ts = 0.3; tr = 0;
           } else {
-            tx = Number(minis[id].dataset.x); ty = Number(minis[id].dataset.y);
-            ts = MINI.w / CW; tr = Number(minis[id].dataset.r);
+            tx = Number(minis[slot].dataset.x); ty = Number(minis[slot].dataset.y);
+            ts = MINI.w / CW; tr = Number(minis[slot].dataset.r);
           }
           // Dealt off the right edge of the deck, then thrown in an arc that
           // rises toward the viewer before it settles.
           const slide = ease(span(t, go, go + 100));
-          const sx = from.x + slide * 34, sy = from.y - slide * 6;
-          x = lerp(sx, tx, pe);
-          y = lerp(sy, ty, pe) - arc(pe) * 54;
+          const lx = from.x + slide * 34, ly = from.y - slide * 6;
+          x = lerp(lx, tx, pe);
+          y = lerp(ly, ty, pe) - arc(pe) * 54;
           r = lerp(-5, tr, pe) + arc(pe) * 8;
-          s = lerp(1, ts, pe) * (1 + arc(pe) * 0.12);
+          sx = sy = lerp(1, ts, pe) * (1 + arc(pe) * 0.12);
           o = win ? 1 - span(pf, 0.8, 1) : 1 - span(pf, 0.9, 1);
         }
         card.style.opacity = (o * out).toFixed(3);
         card.style.transform = `translate(${(x - CW / 2).toFixed(1)}px, ${(y - CH / 2).toFixed(1)}px) ` +
-          `rotate(${r.toFixed(2)}deg) scale(${s.toFixed(3)})`;
+          `rotate(${r.toFixed(2)}deg) scale(${sx.toFixed(3)}, ${sy.toFixed(3)})`;
         const z = String(t >= go ? 60 + order2.length - order2.indexOf(id)
                                  : 20 + (t < T.split2 ? order1 : order2).indexOf(id));
         if (card.style.zIndex !== z) card.style.zIndex = z;
       });
 
       if (win) {
-        let latest = -1, latestAt = -1;
+        // Classes and text change only when they have to: a write per frame
+        // would restyle the window sixty times a second for nothing.
         tabs.forEach((tab, i) => {
           const go = dealtAt(i);
           const land = span(t, go + FLIGHT * 0.78, go + FLIGHT);
           const flash = land > 0 ? arc(span(t, go + FLIGHT * 0.78, go + FLIGHT + 180)) : 0;
-          tab.style.opacity = land > 0 ? ((0.45 + 0.55 * ease(land)) * out).toFixed(3) : "0";
           tab.firstChild.style.opacity = (flash * 0.45).toFixed(3);
-          if (land >= 1 && go > latestAt) { latestAt = go; latest = i; }
-        });
-        // The last one to arrive is the one in front, as in a real terminal.
-        // Classes and text change only when they have to: a write per frame
-        // would restyle the window sixty times a second for nothing.
-        tabs.forEach((tab, i) => {
-          const on = i === latest && t >= LANDED;
+          const live = land > 0;
+          if (tab.classList.contains("sh-live") !== live) tab.classList.toggle("sh-live", live);
+          // The last one opened is the one in front, as in a real terminal.
+          const on = i === front && t >= LANDED;
           if (tab.classList.contains("sh-on") !== on) tab.classList.toggle("sh-on", on);
         });
         const chars = Math.floor(span(t, T.launch + 200, LANDED - 60) * typed.length);
@@ -1325,8 +1387,15 @@ html[data-still] .sweep{display:none}
     };
     const frame = (now) => {
       if (done) return;
+      // Motion switched off mid-deal, or a frame that throws, ends the scene
+      // rather than leaving a veil over the register.
+      if (stillness()) return finish();
       const t = now - began;
-      render(Math.min(t, END));
+      try {
+        render(Math.min(t, END));
+      } catch (e) {
+        return finish();
+      }
       if (!launched && t >= T.launch) {
         launched = true;
         if (opts.onLaunch) opts.onLaunch();
@@ -1365,9 +1434,13 @@ html[data-still] .sweep{display:none}
     };
     fit();
     addEventListener("resize", fit);
+    let guard = 0, over;
+    const ended = new Promise((resolve) => { over = resolve; });
     const clear = () => {
+      clearTimeout(guard);
       removeEventListener("resize", fit);
       host.remove();
+      over();
     };
     document.body.appendChild(host);
     // Said first, so the toast has its height when the scene measures the room.
@@ -1378,6 +1451,17 @@ html[data-still] .sweep{display:none}
     const foot = el.word.parentElement.getBoundingClientRect().top - 10 - el.word.offsetHeight;
     const below = Math.max(0, el.register.getBoundingClientRect().bottom - foot + 8);
     const picked = ids.map((id) => sessions.find((s) => s.sessionId === id)).filter(Boolean);
+    // Each card starts on the mark of its own row. Rows are measured by their
+    // box, not the mark inside it, because content-visibility skips laying out
+    // the insides of rows that are off screen; a row out of view sends its
+    // card in from the nearer edge.
+    const top = el.register.getBoundingClientRect().top, tall = el.register.clientHeight;
+    const origins = picked.slice(0, 12).map((s) => {
+      const node = el.rows.querySelector(`.row[data-id="${CSS.escape(s.sessionId)}"]`);
+      if (!node) return null;
+      const y = node.getBoundingClientRect().top - top + 17.5;
+      return { x: 74, y: Math.max(-12, Math.min(tall + 12, y)) };
+    });
     let show = null;
     const launch = new Promise((resolve) => {
       try {
@@ -1387,17 +1471,20 @@ html[data-still] .sweep{display:none}
           figure: SHUFFLE_FIGURE,
           agents: picked.map((s) => s.agent),
           names: picked.map((s) => s.label),
+          origins,
           below,
           onLaunch: resolve,
           onEnd: clear,
         });
         setTimeout(resolve, show.LAUNCH + 400);
+        // Frames stop in a hidden window; the scene leaves on time regardless.
+        guard = setTimeout(() => show.stop(), show.END + 1500);
       } catch (e) {
         clear();
         resolve();
       }
     });
-    return { launch, fail: () => { if (show) show.fail(); } };
+    return { launch, ended, fail: () => { if (show) show.fail(); } };
   }
 
   // The terminals a revival opens come up on top and take focus, so whatever is
@@ -1428,6 +1515,9 @@ html[data-still] .sweep{display:none}
     el.raise.textContent = "RAISING";
     el.register.classList.add("raising");
 
+    // What goes out is what was on screen at the click: the ruler, the agent
+    // tab or the layout can all change during the wait.
+    const sent = { ids, days: stop().days, agent, layout };
     const every = stampEvery(ids.length);
     // More than five are dealt instead of stamped: past five, a column of stamps reads as a list.
     const dealt = ids.length >= SHUFFLE_FROM && !stillness();
@@ -1465,7 +1555,7 @@ html[data-still] .sweep{display:none}
       result = await api("/api/revive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, days: stop().days, agent, layout }),
+        body: JSON.stringify(sent),
       });
     } catch {
       result = { ok: false, message: "The local service did not answer." };
@@ -1489,13 +1579,14 @@ html[data-still] .sweep{display:none}
       repaintTally();
       // Paid now if the terminals left the window in front, as tmux or a second
       // monitor can; otherwise when it is next focused.
+      // A deal still in the air keeps the masthead quiet until it has landed.
       lapOwed = true;
-      setTimeout(() => {
+      (show ? show.ended : Promise.resolve()).then(() => setTimeout(() => {
         if (lapOwed && document.hasFocus()) {
           lapOwed = false;
           run(agent);
         }
-      }, 900);
+      }, show ? 250 : 900));
       setTimeout(load, 1600);
     } else {
       if (show) show.fail();
