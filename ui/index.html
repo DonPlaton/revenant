@@ -247,6 +247,8 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
   22%{opacity:.95}
   100%{opacity:0;transform:translateY(-52px) scale(1.1)}
 }
+/* The stamp lands where the turn count sits, so the count steps aside for it. */
+.row:has(.stamp) .turns{opacity:0;transition:opacity 120ms var(--ease)}
 .stamp{position:absolute;right:2px;top:11px;font-family:var(--serif);font-size:11px;
   letter-spacing:.22em;color:var(--ember);border:1px solid var(--ember);padding:2px 7px;
   transform:rotate(-8deg);animation:stamp 300ms var(--ease) both}
@@ -942,13 +944,35 @@ html[data-still] .sweep{display:none}
     word(`${data.count} command pair${data.count === 1 ? "" : "s"} on the clipboard.`);
   });
 
+  // The terminals a revival opens come up on top and take focus, so whatever is
+  // still animating when they start plays to nobody. The page shows the moment
+  // first and asks for the launch after it: long enough for the last stamp to
+  // land and its soul to lift, with the cascade squeezed so that twenty rows
+  // take no longer to show than eight.
+  const STAMP_FROM = 120;
+  const STAMP_SPREAD = 600;
+  const STAMP_SETTLE = 800;
+  const stampEvery = (count) => (count > 1 ? Math.min(90, STAMP_SPREAD / (count - 1)) : 0);
+
+  // The lap a revival earns is owed until the window is looked at again, which
+  // is after the new terminals, not behind them.
+  let lapOwed = false;
+  addEventListener("focus", () => {
+    if (!lapOwed) return;
+    lapOwed = false;
+    setTimeout(() => run(agent), 250);
+  });
+
   el.raise.addEventListener("click", async () => {
-    if (!chosen.size) return;
+    // A second click or an Enter during the wait would launch the same sessions
+    // twice, so a revival in flight ignores both.
+    if (!chosen.size || el.raise.dataset.busy === "true") return;
     const ids = [...chosen];
     el.raise.dataset.busy = "true";
     el.raise.textContent = "RAISING";
     el.register.classList.add("raising");
 
+    const every = stampEvery(ids.length);
     if (!document.documentElement.dataset.still) {
       ids.forEach((id, i) => {
         const node = el.rows.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
@@ -959,14 +983,22 @@ html[data-still] .sweep{display:none}
           stamp.textContent = "RAISED";
           node.appendChild(stamp);
 
+          // A row paints inside its own box (content-visibility keeps long lists
+          // cheap), which would shear the soul off at the row's top edge. It lives
+          // on the register instead, placed over its row, free to rise past it.
           const soul = document.createElement("span");
           soul.className = "soul";
           soul.innerHTML = FIGURE;
-          node.appendChild(soul);
+          soul.style.top = `${node.offsetTop + 12}px`;
+          el.register.appendChild(soul);
           setTimeout(() => soul.remove(), 1600);
-        }, 120 + i * 90);
+        }, STAMP_FROM + i * every);
       });
     }
+
+    // Nothing to watch means nothing to wait for.
+    const beat = stillness() ? 0 : STAMP_FROM + every * Math.max(0, ids.length - 1) + STAMP_SETTLE;
+    await new Promise((done) => setTimeout(done, beat));
 
     let result;
     try {
@@ -984,7 +1016,26 @@ html[data-still] .sweep{display:none}
 
     if (result.ok) {
       word(`${result.count} back from the dead. ${result.message || ""}`.trim());
-      setTimeout(() => run(agent), 260);
+      // They are running now. Left marked until the list reloads, a second click
+      // could send them again before their new processes have registered as live.
+      for (const id of ids) {
+        chosen.delete(id);
+        const node = el.rows.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
+        if (node) {
+          node.dataset.on = "false";
+          node.setAttribute("aria-pressed", "false");
+        }
+      }
+      repaintTally();
+      // Paid now if the terminals left the window in front, as tmux or a second
+      // monitor can; otherwise when it is next focused.
+      lapOwed = true;
+      setTimeout(() => {
+        if (lapOwed && document.hasFocus()) {
+          lapOwed = false;
+          run(agent);
+        }
+      }, 900);
       setTimeout(load, 1600);
     } else {
       el.rows.querySelectorAll(".stamp").forEach((node) => node.remove());

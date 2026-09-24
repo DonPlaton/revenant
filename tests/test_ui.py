@@ -8,6 +8,8 @@ nothing in the file reaches for the network.
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -134,6 +136,96 @@ def test_only_the_first_claim_is_typed(page: str) -> None:
     body = page.split("function claim(text) {", 1)[1].split("function paint()", 1)[0]
     assert "if (typed || stillness()) {" in body
     assert "typed = true;" in body
+
+
+def test_the_page_script_actually_parses(page: str, tmp_path: Path) -> None:
+    """Every other test here reads the page as text, and text can be wrong in a
+    way no substring check notices.
+
+    A second `const SETTLE` declared in the same scope once passed all of them.
+    It is a SyntaxError, which stops every line of the page's script from
+    running: the window opens and nothing in it works.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed, so the script cannot be parsed here")
+    scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+    assert scripts, "the page has no inline script"
+    target = tmp_path / "page.js"
+    target.write_text("\n;\n".join(scripts), encoding="utf-8")
+    checked = subprocess.run([node, "--check", str(target)], capture_output=True, text=True)
+    assert checked.returncode == 0, checked.stderr.strip()
+
+
+# --------------------------------------------------------------------------- #
+# reviving
+# --------------------------------------------------------------------------- #
+def _revive_handler(page: str) -> str:
+    return page.split('el.raise.addEventListener("click", async () => {', 1)[1].split("// ── window chrome", 1)[0]
+
+
+def test_the_revival_is_shown_before_anything_launches(page: str) -> None:
+    """The terminals come up on top and take focus, so an animation that is still
+    running when they start plays to nobody. The request waits for it."""
+    body = _revive_handler(page)
+    wait = body.index("await new Promise((done) => setTimeout(done, beat));")
+    ask = body.index('api("/api/revive"')
+    stamps = body.index('stamp.textContent = "RAISED";')
+    assert stamps < wait < ask, "stamps are scheduled, then the page waits, then it asks"
+    assert "STAMP_FROM + every * Math.max(0, ids.length - 1) + STAMP_SETTLE" in body
+
+
+def test_nothing_to_watch_means_nothing_to_wait_for(page: str) -> None:
+    """A reader who asked for less motion is not made to sit through a pause
+    that was only there to show them motion."""
+    assert "const beat = stillness() ? 0 :" in _revive_handler(page)
+
+
+def test_a_large_revival_does_not_take_longer_to_show(page: str) -> None:
+    """The cascade is squeezed rather than lengthened, so twenty rows wait no
+    longer than eight."""
+    assert "const stampEvery = (count) => (count > 1 ? Math.min(90, STAMP_SPREAD / (count - 1)) : 0);" in page
+    assert "const STAMP_SPREAD = 600;" in page
+
+
+def test_a_revival_in_flight_cannot_be_sent_twice(page: str) -> None:
+    """The wait opens a window in which a second click or an Enter would launch
+    the same sessions again."""
+    body = _revive_handler(page)
+    assert 'if (!chosen.size || el.raise.dataset.busy === "true") return;' in body
+
+
+def test_revived_sessions_are_unmarked_as_soon_as_they_launch(page: str) -> None:
+    """Otherwise they stay marked until the list reloads, and their new
+    processes may not have registered as live by the time of a second click."""
+    body = _revive_handler(page)
+    success = body.split("if (result.ok) {", 1)[1].split("} else {", 1)[0]
+    assert "chosen.delete(id);" in success
+    assert "repaintTally();" in success
+
+
+def test_the_lap_a_revival_earns_waits_until_it_can_be_seen(page: str) -> None:
+    """It used to play behind the terminals that had just opened."""
+    assert 'addEventListener("focus", () => {\n    if (!lapOwed) return;' in page
+    success = _revive_handler(page).split("if (result.ok) {", 1)[1].split("} else {", 1)[0]
+    assert "lapOwed = true;" in success
+    assert "document.hasFocus()" in success, "paid at once if nothing took the focus"
+
+
+def test_a_soul_is_free_to_rise_past_its_row(page: str) -> None:
+    """Rows carry content-visibility, which contains their paint and clips
+    anything that leaves the box. A soul appended to its row was sheared off at
+    the row's top edge a few pixels into its rise."""
+    assert "content-visibility:auto" in page.split(".row{", 1)[1].split("}", 1)[0]
+    body = _revive_handler(page)
+    assert "el.register.appendChild(soul);" in body
+    assert "soul.style.top = `${node.offsetTop + 12}px`;" in body
+    assert "node.appendChild(soul)" not in body
+
+
+def test_the_stamp_does_not_land_on_the_turn_count(page: str) -> None:
+    """Both sit at the right edge of a row; the count steps aside while stamped."""
+    assert ".row:has(.stamp) .turns{opacity:0" in page
 
 
 # --------------------------------------------------------------------------- #
