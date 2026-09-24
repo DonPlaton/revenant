@@ -255,6 +255,67 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 @keyframes stamp{from{opacity:0;transform:scale(1.5) rotate(-8deg)}
                  to{opacity:1;transform:scale(1) rotate(-8deg)}}
 
+/* ── the shuffle ────────────────────────────────────────────────────────── */
+/* Laid over the register while a large revival is dealt. Everything here is
+   prefixed sh-: the page already styles .bar, .name and .body globally. */
+.sh-stage{position:fixed;z-index:8;pointer-events:none;overflow:hidden}
+.sh-veil{position:absolute;inset:0;
+  background:radial-gradient(110% 90% at var(--gx,26%) 52%,rgba(28,26,24,.95),rgba(28,26,24,.88))}
+.sh-floor{position:absolute;left:8%;width:40%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--rule) 25%,var(--rule) 75%,transparent)}
+.sh-scene,.sh-ghost,.sh-card,.sh-win,.sh-mini{position:absolute;left:0;top:0}
+.sh-scene{transform-origin:0 0}
+.sh-ghost{transform-origin:50% 86%}
+.sh-ghost svg{display:block;width:100%;height:100%;overflow:visible;color:var(--ember)}
+.sh-ghost .body,.sh-ghost .peak{fill:currentColor}
+.sh-ghost .shade{fill:#000;opacity:.16}
+.sh-ghost .sheen{fill:#fff;opacity:.22}
+.sh-ghost .sclera{fill:#f4efe6}
+.sh-ghost .pupil{fill:#191715}
+.sh-ghost .eyes{transform-box:fill-box;transform-origin:center}
+.sh-ghost .mouth{fill:#191715;opacity:.85}
+.sh-bliss path{fill:none;stroke:#191715;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+
+/* A card is a terminal seen from across the room: a lit screen in a bezel. */
+.sh-card{border-radius:4px;background:#24201c;border:1px solid rgba(238,234,225,.28);overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 10px 20px -12px rgba(0,0,0,.85)}
+.sh-card .sh-bar{position:absolute;left:0;right:0;top:0;height:12px;background:#2e2925;
+  border-bottom:1px solid rgba(238,234,225,.1)}
+.sh-dot{position:absolute;left:6px;top:4px;width:4px;height:4px;border-radius:50%;background:var(--accent)}
+.sh-card .sh-prompt{position:absolute;left:6px;top:17px;font:700 10px/1 var(--mono);color:var(--accent)}
+.sh-ln{position:absolute;left:6px;height:2px;border-radius:1px;background:rgba(238,234,225,.26)}
+.sh-ln-a{top:32px;width:40px}
+.sh-ln-b{top:39px;width:26px}
+
+/* one window, many tabs */
+.sh-win{border-radius:6px;background:#1a1715;border:1px solid rgba(238,234,225,.24);overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 24px 50px -26px rgba(0,0,0,.95)}
+.sh-strip{position:absolute;left:0;right:0;top:0;height:26px;background:#24201c;
+  border-bottom:1px solid rgba(238,234,225,.12)}
+.sh-tab{position:absolute;top:6px;height:20px;border-radius:3px 3px 0 0;background:#2e2925;
+  border:1px solid rgba(238,234,225,.12);border-bottom:0}
+/* A tab lights in its card's colour as the card lands in it. */
+.sh-glow{position:absolute;inset:0;border-radius:inherit;background:var(--accent);opacity:0}
+.sh-tab i{position:absolute;left:50%;top:7px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;
+  background:var(--accent)}
+.sh-tab.sh-on{background:#1a1715;border-color:rgba(238,234,225,.3);box-shadow:inset 0 2px 0 var(--accent)}
+.sh-screen{position:absolute;left:14px;top:40px;right:14px;font:500 12px/1.6 var(--mono);color:var(--ink-2);
+  white-space:pre}
+.sh-screen b{color:var(--accent);font-weight:700}
+.sh-said{display:inline-block;margin-top:4px;color:var(--ink-3);opacity:0}
+.sh-screen .sh-cursor{display:inline-block;width:7px;height:13px;background:var(--accent);
+  vertical-align:-2px;margin-left:2px}
+
+/* many windows */
+.sh-mini{border-radius:5px;background:#1a1715;border:1px solid rgba(238,234,225,.24);overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 28px -16px rgba(0,0,0,.95)}
+.sh-mini .sh-bar{position:absolute;left:0;right:0;top:0;height:16px;background:#24201c;
+  border-bottom:1px solid rgba(238,234,225,.1)}
+.sh-name{position:absolute;left:7px;right:7px;top:3px;font:500 8.5px/1.1 var(--mono);color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em}
+.sh-mini .sh-prompt{position:absolute;left:7px;top:26px;font:700 11px/1 var(--mono);color:var(--accent)}
+.sh-mini .sh-cursor{position:absolute;left:19px;top:26px;width:6px;height:11px;background:var(--accent)}
+
 /* ── states ─────────────────────────────────────────────────────────────── */
 .blank{padding:56px 0 0 110px;max-width:52ch}
 .blank{position:relative}
@@ -462,6 +523,17 @@ html[data-still] .sweep{display:none}
         <rect class="gloss" x="9.6" y="30.4" width="6.4" height="2.2" rx="1.1" style="opacity:.14"/>
       </g>
     </svg>`;
+
+  // The shuffling figure is the icon's own drawing, so it cannot drift from it:
+  // the speed lines come off, since it is standing still, and a pair of shut
+  // eyes goes in for the open ones to swap with. The root class changes too, so
+  // the masthead's blink and gasp do not fight the eyes this scene drives.
+  const SHUFFLE_FIGURE = FIGURE
+    .replace('class="rev"', 'class="sh-figure"')
+    .replace(/<g>\s*<path class="streak"[\s\S]*?<\/g>/, "")
+    .replace('<ellipse class="mouth"',
+      '<g class="sh-bliss" style="display:none"><path d="M11.2 23.4 15.4 19.4 19.6 23.4"/>' +
+      '<path d="M25.4 23.4 29.6 19.4 33.8 23.4"/></g>\n      <ellipse class="mouth"');
 
   const MOTES = [...Array(7)].map((unused, i) =>
     `<i class="mote" style="left:${96 + i * 27}px;top:${34 + (i % 4) * 15}px;` +
@@ -944,6 +1016,390 @@ html[data-still] .sweep{display:none}
     word(`${data.count} command pair${data.count === 1 ? "" : "s"} on the clipboard.`);
   });
 
+  // ── the shuffle ───────────────────────────────────────────────────────
+  // A revival of more than five sessions is dealt rather than stamped: the
+  // figure from the icon shuffles a deck of terminals with its eyes shut,
+  // keeping time with its head, then deals them into one window or several.
+  // The whole scene is one function of elapsed time, so any moment can be
+  // drawn exactly, which is how it is tested. Every class it adds starts with
+  // sh-, because the page already styles .bar, .name and .body globally.
+  const SHUFFLE_FROM = 6;
+
+  function startShuffle(host, opts) {
+    const N = opts.count;
+    const LAYOUT = opts.layout === "windows" ? "windows" : "tabs";
+    // The toast that says what is happening sits over the foot of the stage, so
+    // the scene is composed in the room above it.
+    const W = host.clientWidth, H = host.clientHeight - (opts.below || 0);
+    const bezier = (x1, y1, x2, y2) => (x) => {
+      if (x <= 0) return 0;
+      if (x >= 1) return 1;
+      let t = x;
+      for (let i = 0; i < 6; i++) {
+        const cx = 3 * x1 * t * (1 - t) ** 2 + 3 * x2 * t * t * (1 - t) + t ** 3 - x;
+        const d = 3 * x1 * (1 - t) ** 2 + 6 * (x2 - x1) * t * (1 - t) + 3 * (1 - x2) * t * t;
+        if (Math.abs(d) < 1e-6) break;
+        t -= cx / d;
+      }
+      return 3 * y1 * t * (1 - t) ** 2 + 3 * y2 * t * t * (1 - t) + t ** 3;
+    };
+    // The house easing, solved properly so that script motion and CSS motion
+    // follow the same curve.
+    const ease = bezier(0.2, 0.8, 0.2, 1);
+    const inOut = bezier(0.45, 0, 0.55, 1);
+    const clamp = (v) => Math.max(0, Math.min(1, v));
+    const span = (t, a, b) => clamp((t - a) / (b - a));
+    const lerp = (a, b, p) => a + (b - a) * p;
+    const arc = (p) => Math.sin(p * Math.PI);
+
+    // Timeline in ms. The launch is asked for at T.launch, while the cards are
+    // still in the air: the terminals take a moment to appear, and the one that
+    // lands on top reads as where they were going.
+    const BEAT = 320;
+    const T = { split1: 260, riffle1: 420, split2: 740, riffle2: 900, square: 1220, launch: 1340 };
+    const SHOWN = Math.min(N, 12);
+    const DEAL = Math.min(62, 640 / Math.max(1, SHOWN - 1));
+    const FLIGHT = 460;
+    const LANDED = T.launch + DEAL * (SHOWN - 1) + FLIGHT;
+    const END = LANDED + 420;
+
+    // The scene is composed for a stage of at least 860 x 280 and scaled down
+    // whole to fit a smaller one, so a grid of twelve never runs off the edge of
+    // a minimum-size window. A wide stage keeps the composition and centres it
+    // rather than spreading the cards across a gulf.
+    const k = Math.min(1, W / 860, H / 280);
+    const VW = Math.min(W / k, 1120), VH = H / k;
+    const ox = (W - VW * k) / 2;
+
+    const CW = 70, CH = 52;
+    const ghost = { x: VW * 0.21, y: VH * 0.5, size: 150 };
+    const deck = { x: VW * 0.42, y: VH * 0.47 };
+    const dest = { x: VW * (LAYOUT === "windows" ? 0.715 : 0.74), y: VH * 0.49 };
+    const WIN = { w: 320, h: 200 };
+    const MINI = { w: 96, h: 68 };
+
+    host.style.setProperty("--gx", `${(((ox + ghost.x * k) / W) * 100).toFixed(1)}%`);
+    host.innerHTML = `<div class="sh-veil"></div>` +
+      `<div class="sh-scene" style="width:${VW}px;height:${VH}px;transform:translate(${ox}px,0) scale(${k})">` +
+      `<div class="sh-floor" style="top:${ghost.y + 64}px"></div></div>`;
+    const veil = host.querySelector(".sh-veil");
+    const scene = host.querySelector(".sh-scene");
+    const floor = host.querySelector(".sh-floor");
+
+    const figure = document.createElement("div");
+    figure.className = "sh-ghost";
+    figure.style.width = figure.style.height = `${ghost.size}px`;
+    figure.innerHTML = opts.figure;
+    scene.appendChild(figure);
+    const eyes = figure.querySelector(".eyes");
+    const bliss = figure.querySelector(".sh-bliss");
+    const pupils = figure.querySelectorAll(".pupil");
+    const mouth = figure.querySelector(".mouth");
+
+    const accent = (i) => `var(--${opts.agents[i] === "codex" ? "codex" : "ember"})`;
+    let win = null, screen = null;
+    const tabs = [], minis = [];
+    if (LAYOUT === "tabs") {
+      win = document.createElement("div");
+      win.className = "sh-win";
+      win.style.cssText = `width:${WIN.w}px;height:${WIN.h}px`;
+      win.innerHTML = `<div class="sh-strip"></div><div class="sh-screen"><b>&gt;</b> ` +
+        `<span class="sh-typed"></span><span class="sh-cursor"></span>\n<span class="sh-said"></span></div>`;
+      const strip = win.querySelector(".sh-strip");
+      const slot = Math.min(34, (WIN.w - 16) / SHOWN);
+      for (let i = 0; i < SHOWN; i++) {
+        const tab = document.createElement("div");
+        tab.className = "sh-tab";
+        tab.style.cssText = `left:${8 + i * slot}px;width:${slot - 3}px;--accent:${accent(i)}`;
+        tab.innerHTML = `<b class="sh-glow"></b><i></i>`;
+        tab.dataset.cx = 8 + i * slot + (slot - 3) / 2;
+        strip.appendChild(tab);
+        tabs.push(tab);
+      }
+      screen = { typed: win.querySelector(".sh-typed"), said: win.querySelector(".sh-said") };
+      scene.appendChild(win);
+    } else {
+      const cols = 4, rows = Math.ceil(SHOWN / cols);
+      for (let i = 0; i < SHOWN; i++) {
+        const m = document.createElement("div");
+        m.className = "sh-mini";
+        m.style.cssText = `width:${MINI.w}px;height:${MINI.h}px;--accent:${accent(i)}`;
+        m.innerHTML = `<i class="sh-bar"></i><span class="sh-name"></span>
+                       <b class="sh-prompt">&gt;</b><i class="sh-cursor"></i>`;
+        m.querySelector(".sh-name").textContent = opts.names[i] || "";
+        // A short last row sits centred under the full ones, not hard left.
+        const col = i % cols, row = Math.floor(i / cols), inRow = Math.min(cols, SHOWN - row * cols);
+        m.dataset.x = dest.x + (col - (inRow - 1) / 2) * (MINI.w + 14) + (row % 2 ? 7 : -7);
+        m.dataset.y = dest.y + (row - (rows - 1) / 2) * (MINI.h + 16);
+        m.dataset.r = (((i * 37) % 7) - 3) * 0.8;
+        scene.appendChild(m);
+        minis.push(m);
+      }
+    }
+
+    const cards = [];
+    for (let i = 0; i < SHOWN; i++) {
+      const c = document.createElement("div");
+      c.className = "sh-card";
+      c.style.cssText = `width:${CW}px;height:${CH}px;--accent:${accent(i)}`;
+      c.innerHTML = `<i class="sh-bar"></i><i class="sh-dot"></i><b class="sh-prompt">&gt;_</b>` +
+                    `<i class="sh-ln sh-ln-a"></i><i class="sh-ln sh-ln-b"></i>`;
+      scene.appendChild(c);
+      cards.push(c);
+    }
+
+    // The riffle: cut into halves and interleave them, twice.
+    const riffle = (order) => {
+      const half = Math.ceil(order.length / 2), L = order.slice(0, half), R = order.slice(half), out = [];
+      for (let i = 0; i < half; i++) {
+        if (L[i] !== undefined) out.push(L[i]);
+        if (R[i] !== undefined) out.push(R[i]);
+      }
+      return out;
+    };
+    const order0 = [...Array(SHOWN).keys()];
+    const order1 = riffle(order0);
+    const order2 = riffle(order1);
+    // A deck shows its edge: each card sits 2.4 px above the one beneath it.
+    const stackPos = (k) => ({ x: deck.x + k * 0.5, y: deck.y - k * 2.4 });
+    // Halves held apart and bowed inward, the way two hands bend them first.
+    const halfPos = (side, k) => ({ x: deck.x + side * 92 + k * 0.5, y: deck.y - 10 - k * 2.4, r: -side * 14 });
+
+    function riffleCard(id, before, after, tSplit, tRiffle, t) {
+      const half = Math.ceil(before.length / 2);
+      const k0 = before.indexOf(id), side = k0 < half ? -1 : 1, kh = side < 0 ? k0 : k0 - half;
+      const k1 = after.indexOf(id);
+      const from = stackPos(k0), held = halfPos(side, kh), to = stackPos(k1);
+      if (t < tSplit) return { ...from, r: 0 };
+      const ps = ease(span(t, tSplit, tSplit + 160));
+      if (t < tRiffle) {
+        return { x: lerp(from.x, held.x, ps), y: lerp(from.y, held.y, ps) - arc(ps) * 12, r: held.r * ps };
+      }
+      // Released bottom card first and alternating sides, which is the zipper.
+      const stagger = Math.min(30, 250 / Math.max(1, before.length - 1));
+      const drop = tRiffle + k1 * stagger;
+      const pd = ease(span(t, drop, drop + 180));
+      return { x: lerp(held.x, to.x, pd), y: lerp(held.y, to.y, pd) - arc(pd) * 16, r: lerp(held.r, 0, pd) };
+    }
+
+    // The nod: a quick drop onto each downbeat and a slow float back up, the
+    // way someone keeps time with their head. Locked to the beat so the riffles
+    // land on it.
+    function nod(t) {
+      if (t < T.split1 || t > T.launch + 240) return 0;
+      const phase = ((t - T.split1) % BEAT) / BEAT;
+      return phase < 0.22 ? ease(phase / 0.22) : 1 - inOut((phase - 0.22) / 0.78);
+    }
+
+    // The tab in front is the last card dealt, and the window types the command
+    // that resumes it, in its own agent's words and colour.
+    const front = order2[0];
+    const typed = opts.agents[front] === "codex" ? "codex resume" : "claude --resume";
+    if (win) {
+      win.style.setProperty("--accent", accent(front));
+      screen.said.textContent = opts.names[front] || "";
+    }
+    const dealtAt = (id) => T.launch + (order2.length - 1 - order2.indexOf(id)) * DEAL;
+    // A failed launch cuts the scene short: everything fades from wherever it is.
+    let fadeFrom = END - 240;
+
+    function render(t) {
+      const out = 1 - ease(span(t, fadeFrom, fadeFrom + 240));
+      const rise = ease(span(t, 0, 320));
+      veil.style.opacity = (ease(span(t, 0, 260)) * out).toFixed(3);
+      floor.style.opacity = (rise * out).toFixed(3);
+
+      const n = nod(t);
+      const tap = t >= T.square ? arc(span(t, T.square, T.square + 200)) : 0;
+      const sz = lerp(0.86, 1, rise);
+      figure.style.opacity = (rise * out).toFixed(3);
+      // Once the dealing starts it stops keeping time and hovers, watching.
+      const hover = Math.sin((t - T.launch) / 420) * 2.2 * span(t, T.launch + 240, T.launch + 600);
+      figure.style.transform = `translate(${ghost.x - ghost.size / 2}px, ` +
+        `${ghost.y - ghost.size / 2 + (1 - rise) * 24 + n * 4 + tap * 3 + hover}px) ` +
+        `rotate(${(-n * 6).toFixed(2)}deg) scale(${sz * (1 + tap * 0.04)}, ${sz * (1 - tap * 0.04)})`;
+
+      // Eyes shut through the shuffle; on the tap they squash open and look
+      // where the cards are about to go.
+      const shut = t >= T.split1 - 40 && t < T.square;
+      eyes.style.display = shut ? "none" : "";
+      bliss.style.display = shut ? "" : "none";
+      const open = t >= T.square ? lerp(0.15, 1, ease(span(t, T.square, T.square + 110))) : 1;
+      eyes.style.transform = `scaleY(${open.toFixed(3)})`;
+      const look = ease(span(t, T.square + 60, T.square + 260));
+      pupils.forEach((p, i) => p.setAttribute("cx", ((i ? 32 : 17.8) + look * 1.5).toFixed(2)));
+      // The mouth sings on the beat.
+      const sing = shut ? 1 + n * 0.5 : 1;
+      mouth.setAttribute("ry", (3 * sing).toFixed(2));
+      mouth.setAttribute("rx", (2.5 * (1.18 - (sing - 1) * 0.5)).toFixed(2));
+
+      // The destination comes in on the tap: until then the shuffle has the stage.
+      const destIn = ease(span(t, T.square, T.square + 280));
+      if (win) {
+        win.style.opacity = (destIn * out).toFixed(3);
+        win.style.transform = `translate(${dest.x - WIN.w / 2}px, ` +
+          `${dest.y - WIN.h / 2 + (1 - destIn) * 14}px) scale(${lerp(0.96, 1, destIn)})`;
+      }
+
+      const deckIn = ease(span(t, 120, 380));
+      cards.forEach((card, id) => {
+        const p = t < T.split2 ? riffleCard(id, order0, order1, T.split1, T.riffle1, t)
+                               : riffleCard(id, order1, order2, T.split2, T.riffle2, t);
+        let x = p.x, y = p.y, r = p.r || 0, s = 1, o = deckIn;
+        if (t < 380) { y += (1 - deckIn) * 18; s = lerp(0.72, 1, deckIn); }
+        // Squared up: the stack compresses and lifts on the tap.
+        if (t >= T.square && t < T.launch) y -= arc(span(t, T.square, T.launch)) * 4;
+
+        const go = dealtAt(id);
+        if (t >= go) {
+          const pf = span(t, go, go + FLIGHT), pe = ease(pf);
+          const from = stackPos(order2.indexOf(id));
+          let tx, ty, ts, tr;
+          if (win) {
+            tx = dest.x - WIN.w / 2 + Number(tabs[id].dataset.cx);
+            ty = dest.y - WIN.h / 2 + 13;
+            ts = 0.3; tr = 0;
+          } else {
+            tx = Number(minis[id].dataset.x); ty = Number(minis[id].dataset.y);
+            ts = MINI.w / CW; tr = Number(minis[id].dataset.r);
+          }
+          // Dealt off the right edge of the deck, then thrown in an arc that
+          // rises toward the viewer before it settles.
+          const slide = ease(span(t, go, go + 100));
+          const sx = from.x + slide * 34, sy = from.y - slide * 6;
+          x = lerp(sx, tx, pe);
+          y = lerp(sy, ty, pe) - arc(pe) * 54;
+          r = lerp(-5, tr, pe) + arc(pe) * 8;
+          s = lerp(1, ts, pe) * (1 + arc(pe) * 0.12);
+          o = win ? 1 - span(pf, 0.8, 1) : 1 - span(pf, 0.9, 1);
+        }
+        card.style.opacity = (o * out).toFixed(3);
+        card.style.transform = `translate(${(x - CW / 2).toFixed(1)}px, ${(y - CH / 2).toFixed(1)}px) ` +
+          `rotate(${r.toFixed(2)}deg) scale(${s.toFixed(3)})`;
+        const z = String(t >= go ? 60 + order2.length - order2.indexOf(id)
+                                 : 20 + (t < T.split2 ? order1 : order2).indexOf(id));
+        if (card.style.zIndex !== z) card.style.zIndex = z;
+      });
+
+      if (win) {
+        let latest = -1, latestAt = -1;
+        tabs.forEach((tab, i) => {
+          const go = dealtAt(i);
+          const land = span(t, go + FLIGHT * 0.78, go + FLIGHT);
+          const flash = land > 0 ? arc(span(t, go + FLIGHT * 0.78, go + FLIGHT + 180)) : 0;
+          tab.style.opacity = land > 0 ? ((0.45 + 0.55 * ease(land)) * out).toFixed(3) : "0";
+          tab.firstChild.style.opacity = (flash * 0.45).toFixed(3);
+          if (land >= 1 && go > latestAt) { latestAt = go; latest = i; }
+        });
+        // The last one to arrive is the one in front, as in a real terminal.
+        // Classes and text change only when they have to: a write per frame
+        // would restyle the window sixty times a second for nothing.
+        tabs.forEach((tab, i) => {
+          const on = i === latest && t >= LANDED;
+          if (tab.classList.contains("sh-on") !== on) tab.classList.toggle("sh-on", on);
+        });
+        const chars = Math.floor(span(t, T.launch + 200, LANDED - 60) * typed.length);
+        const shown = typed.slice(0, chars);
+        if (screen.typed.textContent !== shown) screen.typed.textContent = shown;
+        screen.said.style.opacity = (ease(span(t, LANDED - 60, LANDED + 180)) * out).toFixed(3);
+      } else {
+        minis.forEach((m, i) => {
+          const go = dealtAt(i);
+          const land = ease(span(t, go + FLIGHT * 0.86, go + FLIGHT + 80));
+          m.style.opacity = (land * out).toFixed(3);
+          m.style.transform = `translate(${Number(m.dataset.x) - MINI.w / 2}px, ` +
+            `${Number(m.dataset.y) - MINI.h / 2}px) rotate(${m.dataset.r}deg) scale(${lerp(0.94, 1, land)})`;
+        });
+      }
+    }
+
+    // Driven by the page's frame clock, once through. The caller hears when the
+    // launch should be asked for and when the scene is over, and can cut it short.
+    const began = performance.now();
+    let launched = false, done = false, stopAt = END;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      host.innerHTML = "";
+      if (opts.onEnd) opts.onEnd();
+    };
+    const frame = (now) => {
+      if (done) return;
+      const t = now - began;
+      render(Math.min(t, END));
+      if (!launched && t >= T.launch) {
+        launched = true;
+        if (opts.onLaunch) opts.onLaunch();
+      }
+      if (t >= stopAt) return finish();
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+
+    return {
+      render,
+      END,
+      LAUNCH: T.launch,
+      // A failed launch fades everything out from where it stands.
+      fail() {
+        fadeFrom = Math.min(fadeFrom, performance.now() - began);
+        stopAt = Math.min(stopAt, fadeFrom + 260);
+      },
+      stop: finish,
+    };
+  }
+
+  // Lays the stage over the register and starts the scene. Resolves `launch`
+  // when the cards are about to leave the deck, or after a timer if frames have
+  // stopped (a hidden window gets none) or the scene never started at all.
+  function deal(ids) {
+    const host = document.createElement("div");
+    host.className = "sh-stage";
+    host.setAttribute("aria-hidden", "true");
+    // Kept over the register if the window changes size mid-deal: the scene
+    // keeps its own size, and the veil goes on covering the rows.
+    const fit = () => {
+      const box = el.register.getBoundingClientRect();
+      Object.assign(host.style, { left: `${box.left}px`, top: `${box.top}px`,
+                                  width: `${box.width}px`, height: `${box.height}px` });
+    };
+    fit();
+    addEventListener("resize", fit);
+    const clear = () => {
+      removeEventListener("resize", fit);
+      host.remove();
+    };
+    document.body.appendChild(host);
+    // Said first, so the toast has its height when the scene measures the room.
+    const count = say(ids.length).toLowerCase();
+    word(layout === "tabs"
+      ? `Dealing ${count} sessions into one window.`
+      : `Dealing ${count} sessions into windows of their own.`);
+    const foot = el.word.parentElement.getBoundingClientRect().top - 10 - el.word.offsetHeight;
+    const below = Math.max(0, el.register.getBoundingClientRect().bottom - foot + 8);
+    const picked = ids.map((id) => sessions.find((s) => s.sessionId === id)).filter(Boolean);
+    let show = null;
+    const launch = new Promise((resolve) => {
+      try {
+        show = startShuffle(host, {
+          count: ids.length,
+          layout,
+          figure: SHUFFLE_FIGURE,
+          agents: picked.map((s) => s.agent),
+          names: picked.map((s) => s.label),
+          below,
+          onLaunch: resolve,
+          onEnd: clear,
+        });
+        setTimeout(resolve, show.LAUNCH + 400);
+      } catch (e) {
+        clear();
+        resolve();
+      }
+    });
+    return { launch, fail: () => { if (show) show.fail(); } };
+  }
+
   // The terminals a revival opens come up on top and take focus, so whatever is
   // still animating when they start plays to nobody. The page shows the moment
   // first and asks for the launch after it: long enough for the last stamp to
@@ -973,7 +1429,10 @@ html[data-still] .sweep{display:none}
     el.register.classList.add("raising");
 
     const every = stampEvery(ids.length);
-    if (!document.documentElement.dataset.still) {
+    // More than five are dealt instead of stamped: past five, a column of stamps reads as a list.
+    const dealt = ids.length >= SHUFFLE_FROM && !stillness();
+    const show = dealt ? deal(ids) : null;
+    if (!document.documentElement.dataset.still && !dealt) {
       ids.forEach((id, i) => {
         const node = el.rows.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
         if (!node) return;
@@ -996,9 +1455,10 @@ html[data-still] .sweep{display:none}
       });
     }
 
-    // Nothing to watch means nothing to wait for.
+    // Nothing to watch means nothing to wait for. A dealt revival asks for the
+    // launch while its cards are still in the air, not after they land.
     const beat = stillness() ? 0 : STAMP_FROM + every * Math.max(0, ids.length - 1) + STAMP_SETTLE;
-    await new Promise((done) => setTimeout(done, beat));
+    await (show ? show.launch : new Promise((done) => setTimeout(done, beat)));
 
     let result;
     try {
@@ -1038,6 +1498,7 @@ html[data-still] .sweep{display:none}
       }, 900);
       setTimeout(load, 1600);
     } else {
+      if (show) show.fail();
       el.rows.querySelectorAll(".stamp").forEach((node) => node.remove());
       word(result.message || "Nothing was raised.", true);
       repaintTally();

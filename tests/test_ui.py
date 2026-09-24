@@ -168,7 +168,7 @@ def test_the_revival_is_shown_before_anything_launches(page: str) -> None:
     """The terminals come up on top and take focus, so an animation that is still
     running when they start plays to nobody. The request waits for it."""
     body = _revive_handler(page)
-    wait = body.index("await new Promise((done) => setTimeout(done, beat));")
+    wait = body.index("await (show ? show.launch : new Promise((done) => setTimeout(done, beat)));")
     ask = body.index('api("/api/revive"')
     stamps = body.index('stamp.textContent = "RAISED";')
     assert stamps < wait < ask, "stamps are scheduled, then the page waits, then it asks"
@@ -226,6 +226,115 @@ def test_a_soul_is_free_to_rise_past_its_row(page: str) -> None:
 def test_the_stamp_does_not_land_on_the_turn_count(page: str) -> None:
     """Both sit at the right edge of a row; the count steps aside while stamped."""
     assert ".row:has(.stamp) .turns{opacity:0" in page
+
+
+# --------------------------------------------------------------------------- #
+# the shuffle
+# --------------------------------------------------------------------------- #
+def _shuffle_engine(page: str) -> str:
+    return page.split("function startShuffle(host, opts) {", 1)[1].split("function deal(ids) {", 1)[0]
+
+
+def _dealer(page: str) -> str:
+    return page.split("function deal(ids) {", 1)[1].split("const STAMP_FROM", 1)[0]
+
+
+def test_more_than_five_are_dealt_rather_than_stamped(page: str) -> None:
+    """Six stamps in a column read as a list. Five and under keep them."""
+    assert "const SHUFFLE_FROM = 6;" in page
+    body = _revive_handler(page)
+    assert "const dealt = ids.length >= SHUFFLE_FROM && !stillness();" in body
+    assert "if (!document.documentElement.dataset.still && !dealt) {" in body
+
+
+def test_a_dealt_revival_launches_while_the_cards_are_in_the_air(page: str) -> None:
+    """Waiting for the last card to land would add two and a half seconds to a
+    click; the terminals take a moment to appear anyway, so the ask goes out as
+    the first card leaves the deck."""
+    engine = _shuffle_engine(page)
+    assert "launch: 1340" in engine
+    assert "const LANDED = T.launch + DEAL * (SHOWN - 1) + FLIGHT;" in engine
+    assert "if (!launched && t >= T.launch) {" in engine
+    assert "onLaunch: resolve," in _dealer(page)
+
+
+def test_a_scene_without_frames_still_lets_the_revival_through(page: str) -> None:
+    """A hidden window gets no animation frames and a scene can throw; neither
+    may hold a launch hostage."""
+    dealer = _dealer(page)
+    assert "setTimeout(resolve, show.LAUNCH + 400);" in dealer
+    assert "} catch (e) {\n        clear();\n        resolve();" in dealer
+
+
+def test_the_shuffle_fits_the_window_it_plays_in(page: str) -> None:
+    """At the minimum window size the register is about 660 x 240, and a grid
+    of twelve composed for a full-size window ran off its right edge."""
+    engine = _shuffle_engine(page)
+    assert "const k = Math.min(1, W / 860, H / 280);" in engine
+    assert "host.appendChild(" not in engine, "everything but the veil lives in the scaled scene"
+    dealer = _dealer(page)
+    assert 'addEventListener("resize", fit);' in dealer
+    assert 'removeEventListener("resize", fit);' in dealer
+
+
+def test_a_failed_revival_cuts_the_shuffle_short(page: str) -> None:
+    body = _revive_handler(page)
+    failure = body.split("if (result.ok) {", 1)[1].split("} else {", 1)[1]
+    assert "if (show) show.fail();" in failure
+
+
+def test_the_shuffle_says_what_it_is_doing(page: str) -> None:
+    """The toast names the deal from the first frame; the stage itself is
+    hidden from assistive tech so the announcement is not doubled."""
+    dealer = _dealer(page)
+    assert "Dealing ${count} sessions into one window." in dealer
+    assert "Dealing ${count} sessions into windows of their own." in dealer
+    assert 'host.setAttribute("aria-hidden", "true");' in dealer
+
+
+def test_the_shuffle_keeps_to_its_own_classes(page: str) -> None:
+    """The page styles .bar, .name and .body globally; an unprefixed class in
+    the scene picks those rules up and breaks the drawing."""
+    engine = _shuffle_engine(page) + _dealer(page)
+    names = re.findall(r'className = "([^"]+)"', engine) + re.findall(r'class="([^"]+)"', engine)
+    assert names, "the scene creates no elements"
+    for name in names:
+        for token in name.split():
+            assert token.startswith("sh-"), f"unprefixed class {token!r} in the shuffle"
+    styles = page.split("/* ── the shuffle", 1)[1].split("/* ── states", 1)[0]
+    for selector in re.findall(r"(?:^|})\s*([^{}@/]+)\{", styles):
+        first = selector.strip().split(",")[0].split()[0]
+        assert first.startswith(".sh-"), f"shuffle rule {selector.strip()!r} reaches outside the scene"
+
+
+def test_session_names_reach_the_scene_as_text(page: str) -> None:
+    """A label is whatever the user typed as a prompt or a rename; markup in it
+    must be shown, never parsed."""
+    engine = _shuffle_engine(page)
+    for line in engine.splitlines():
+        if "innerHTML" in line:
+            assert "names" not in line and "label" not in line, line.strip()
+    assert 'm.querySelector(".sh-name").textContent = opts.names[i] || "";' in engine
+    assert 'screen.said.textContent = opts.names[front] || "";' in engine
+
+
+def test_the_shuffle_is_composed_above_the_toast(page: str) -> None:
+    """The toast sits over the foot of the register; at the minimum window size
+    it covered the bottom row of dealt windows."""
+    assert "H = host.clientHeight - (opts.below || 0);" in _shuffle_engine(page)
+    dealer = _dealer(page)
+    assert dealer.index("word(layout ===") < dealer.index("el.word.offsetHeight")
+    assert "below," in dealer
+
+
+def test_the_shuffling_figure_is_the_icon_with_its_eyes_shut(page: str) -> None:
+    """Derived from FIGURE at load, so each replacement has to find its mark:
+    a silent miss would leave the speed lines on, or no shut eyes to swap in."""
+    figure = page.split("const FIGURE = `", 1)[1].split("`;", 1)[0]
+    assert figure.count('class="rev"') == 1
+    assert re.search(r'<g>\s*<path class="streak"[\s\S]*?</g>', figure)
+    assert figure.count('<ellipse class="mouth"') == 1
+    assert 'class="sh-figure"' in page and 'class="sh-bliss"' in page
 
 
 # --------------------------------------------------------------------------- #
