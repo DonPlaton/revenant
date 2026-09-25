@@ -488,7 +488,10 @@ def test_escape_during_a_revival_skips_the_show_and_launches(page: str) -> None:
     assert 'if (revival) revival.hurry();\n      else $("shut").click();' in page
     body = _revive_handler(page)
     assert "hurry: () => { hurry(); if (show) show.stop(); }," in body
-    assert "finished();\n    revival = null;" in body
+    ended = body.split("finished();", 1)[1]
+    assert "(show ? show.ended : Promise.resolve()).then(() => {" in ended
+    assert ended.index('el.raise.dataset.busy = "false";') > ended.index("show.ended")
+    assert "if (revival === mine) revival = null;" in ended, "Escape skips until the cards land"
 
 
 def test_closing_during_a_revival_sends_it_first(page: str) -> None:

@@ -853,22 +853,26 @@ html[data-still] .sweep{display:none}
     el.register.classList.add("loading");
     let data;
     try {
-      data = await api(`/api/sessions?days=${stop().days}${agent ? "&agent=" + agent : ""}`);
-    } catch {
+      // A cold read of every transcript on a heavy machine can take a while;
+      // only a service that says nothing for two minutes is taken for dead.
+      data = await api(`/api/sessions?days=${stop().days}${agent ? "&agent=" + agent : ""}`, {}, 120000);
+    } catch (e) {
       if (mine !== seq) return;
       // Leaving the loading class on would dim the register for good, including
       // every row a later reload paints under it.
       el.register.classList.remove("loading");
       typed = true;
       el.claim.dataset.typing = "false";
-      el.claim.textContent = "The local service stopped answering.";
+      el.claim.textContent = e && e.name === "AbortError"
+        ? "Reading the transcripts took too long. Press Ctrl+R to try again."
+        : "The local service stopped answering.";
       el.rows.innerHTML = "";
       return;
     }
     if (mine !== seq) return;
     el.register.classList.remove("loading");
 
-    paintTabs(data.agents || [], data.agent);
+    if (data.agents) paintTabs(data.agents, data.agent);
     opens = data.layouts || {};
     paintMode();
     if (data.error) {
@@ -1076,7 +1080,8 @@ html[data-still] .sweep{display:none}
       document.execCommand("copy");
       scratch.remove();
     }
-    word(`${data.count} command pair${data.count === 1 ? "" : "s"} on the clipboard.`);
+    word(`${data.count} command pair${data.count === 1 ? "" : "s"} on the clipboard.` +
+      (data.dropped ? ` The other ${data.dropped} did not fit in one request.` : ""));
   });
 
   // ── the shuffle ───────────────────────────────────────────────────────
@@ -1764,11 +1769,12 @@ html[data-still] .sweep{display:none}
     // More than five are dealt instead of stamped: past five, a column of stamps reads as a list.
     const dealt = ids.length >= SHUFFLE_FROM && !stillness();
     const show = dealt ? deal(ids) : null;
+    const stampTimers = [];
     if (!document.documentElement.dataset.still && !dealt) {
       ids.forEach((id, i) => {
         const node = el.rows.querySelector(`.row[data-id="${CSS.escape(id)}"]`);
         if (!node) return;
-        setTimeout(() => {
+        stampTimers.push(setTimeout(() => {
           const stamp = document.createElement("span");
           stamp.className = "stamp";
           stamp.textContent = "RAISED";
@@ -1783,7 +1789,7 @@ html[data-still] .sweep{display:none}
           soul.style.top = `${node.offsetTop + 12}px`;
           el.register.appendChild(soul);
           setTimeout(() => soul.remove(), 1600);
-        }, STAMP_FROM + i * every);
+        }, STAMP_FROM + i * every));
       });
     }
 
@@ -1811,7 +1817,6 @@ html[data-still] .sweep{display:none}
         : "The local service did not answer." };
     }
 
-    el.raise.dataset.busy = "false";
     setTimeout(() => el.register.classList.remove("raising"), 900);
 
     if (result.ok) {
@@ -1843,12 +1848,21 @@ html[data-still] .sweep{display:none}
       setTimeout(load, 1600);
     } else {
       if (show) show.fail();
+      // A fast refusal can come back before every stamp has landed.
+      stampTimers.forEach((timer) => clearTimeout(timer));
       el.rows.querySelectorAll(".stamp").forEach((node) => node.remove());
       word(result.message || "Nothing was raised.", true);
       repaintTally();
     }
     finished();
-    revival = null;
+    // The answer comes while the last cards are still in the air. Until they
+    // land the button stays busy and Escape stays a skip rather than a close.
+    const mine = revival;
+    (show ? show.ended : Promise.resolve()).then(() => {
+      el.raise.dataset.busy = "false";
+      if (revival === mine) revival = null;
+      repaintTally();
+    });
   });
 
   // ── window chrome ─────────────────────────────────────────────────────
