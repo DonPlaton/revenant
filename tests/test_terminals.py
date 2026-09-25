@@ -395,3 +395,12 @@ def test_a_terminal_that_hands_off_cleanly_counts_as_opened() -> None:
     opened, message = terminals.run(plan)
     assert opened == 1
     assert message == ""
+
+
+def test_the_suite_cannot_open_a_terminal(nothing_opens: list) -> None:
+    """A launch that slips past the stubs is refused, not run on this machine."""
+    plan = terminals.Plan("wt", [["wt.exe", "-w", "new", "new-tab", "cmd"]])
+    with pytest.raises(RuntimeError, match="stub the launcher"):
+        terminals.run(plan)
+    assert nothing_opens and nothing_opens[0].startswith("wt.exe")
+    nothing_opens.clear()
