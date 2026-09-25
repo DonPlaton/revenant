@@ -340,7 +340,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-360 tests, no network, no real session touched. Everything runs against a synthetic config
+384 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
 terminal backends against both layouts on all three platforms, quoting of paths with spaces and
@@ -372,13 +372,14 @@ close enough behind to eat every one; that one runs every few hours on open, on 
 wordmark, and once a revival lands. Dragging the caret back through time strikes sparks off it.
 Every row that comes back releases a soul that lifts off the register. Bring back more than five
 and the figure shuffles them instead. Their marks lift off the rows and fold into a deck of small
-terminals, which it riffles with its eyes shut while it nods along, then deals into one window or
-several, whichever you picked, in the order they will open. The launch
-goes out as the first card leaves the deck, 1.3 seconds after the click, so the terminals only
-cover the last of the deal. An empty register keeps the figure standing in it while motes drift
-past. The first claim types itself under a block cursor,
-and every later one lands whole, because by then you are waiting on an answer rather than a show.
-All of it stops under `prefers-reduced-motion`.
+terminals, which it riffles with its eyes shut, keeping time with its head and singing along, then
+deals into one window or several, whichever you picked, in the order they will open. It plays at
+half speed, because at full speed the riffle is over before you have found it. The launch goes out
+as the first card leaves the deck, 2.7 seconds after the click, so the terminals only cover the
+last of the deal, and Escape skips the whole thing and launches at once. An empty register keeps
+the figure standing in it while motes drift past. The first claim types itself under a block
+cursor, and every later one lands whole, because by then you are waiting on an answer rather than
+a show. All of it stops under `prefers-reduced-motion`.
 
 The cast is drawn out on a
 [second canvas](https://claude.ai/code/artifact/ee61b78b-c2fa-4f52-bcce-543b54dbd8d2), at working
