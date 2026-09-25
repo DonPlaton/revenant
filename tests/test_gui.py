@@ -306,6 +306,8 @@ def no_launch(monkeypatch: pytest.MonkeyPatch) -> list:
 
     def fake(sessions, **kwargs):
         calls.append([s.session_id for s in sessions])
+        if kwargs.get("landed") is not None:
+            kwargs["landed"].extend(sessions)
         return 0
 
     monkeypatch.setattr(revenant, "launch", fake)

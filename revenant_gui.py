@@ -116,7 +116,7 @@ class Backend:
             found = revenant.scan_all(since=since, agents=self.available())
         else:
             agent = next((a for a in self.available() if a.key == which), self.agent)
-            root = self.root if (self.explicit_root or agent is self.agent) else agent.config_dir()
+            root = self._root_for(agent)
             found = revenant.scan_sessions(root, since=since, agent=agent)
         with self._lock:
             self._cache = (key, time.monotonic(), found)
@@ -184,7 +184,7 @@ class Backend:
         if not ids:
             return []
         by_id = {s.session_id: s for s in self._scan(days, which or self.agent.key)}
-        return [by_id[i] for i in ids if i in by_id]
+        return [by_id[i] for i in dict.fromkeys(ids) if i in by_id]
 
     # -- actions ---------------------------------------------------------- #
 
@@ -213,7 +213,8 @@ class Backend:
         # An unknown layout is the UI being out of step with the backend, which is
         # no reason to refuse the rescue: fall back to the default and open them.
         wanted = layout if layout in terminals.LAYOUTS else terminals.DEFAULT_LAYOUT
-        code = revenant.launch(chosen, layout=wanted, stream=sink)
+        came_up: list[revenant.Session] = []
+        code = revenant.launch(chosen, layout=wanted, stream=sink, landed=came_up)
         self.invalidate()  # a revived session becomes live as soon as it registers
         note = [line for line in sink.getvalue().strip().splitlines() if line]
         message = " ".join(note[-2:]) if note else ""
@@ -221,7 +222,7 @@ class Backend:
             message += f" {len(running)} held back."
         if len(placed) < len(chosen):
             message += f" {len(chosen) - len(placed)} had no folder on record."
-        raised = [s.session_id for s in placed] if code == 0 else []
+        raised = [s.session_id for s in came_up] if code == 0 else []
         return {"ok": code == 0, "count": len(raised), "raised": raised, "message": message.strip()}
 
     def _root_for(self, agent: Agent) -> Path:
@@ -318,6 +319,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _frame(self, which: str) -> dict:
+        """What the page needs to stay usable around a failed scan: the agent
+        tabs to switch away with, and what each layout opens."""
+        frame: dict = {"agent": which or self.backend.agent.key}
+        for key, read, empty in (("agents", self.backend.choices, []), ("layouts", self.backend.layouts, {})):
+            try:
+                frame[key] = read()
+            except Exception:  # noqa: BLE001 - the frame is best effort around an error
+                frame[key] = empty
+        return frame
+
     def _guarded(self, work) -> dict:
         """Run a route, turning a failure into an answer the page can show.
 
@@ -379,7 +391,10 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/sessions":
             days = _as_float(query.get("days", ["7"])[0], 7.0)
             which = (query.get("agent") or [""])[0][:40]
-            self._json(self._guarded(lambda: self.backend.sessions(days=days, which=which)))
+            result = self._guarded(lambda: self.backend.sessions(days=days, which=which))
+            if "agents" not in result:
+                result.update(self._frame(which))
+            self._json(result)
             return
         if parsed.path == "/api/ping":
             self._json({"ok": True})
@@ -403,7 +418,8 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             payload = {}
         offered = payload.get("ids")
-        every = [str(i) for i in offered] if isinstance(offered, list) else []
+        # An id named twice would be launched twice on one transcript.
+        every = list(dict.fromkeys(str(i) for i in offered)) if isinstance(offered, list) else []
         ids = every[:MAX_IDS]
         days = _as_float(payload.get("days", 7), 7.0)
         which = str(payload.get("agent", ""))[:40]
@@ -416,7 +432,9 @@ class Handler(BaseHTTPRequestHandler):
                                      "the rest are still marked.").strip()
             self._json(result)
         elif parsed.path == "/api/commands":
-            self._json(self._guarded(lambda: self.backend.commands(ids, days=days, which=which)))
+            result = self._guarded(lambda: self.backend.commands(ids, days=days, which=which))
+            result["dropped"] = len(every) - len(ids)
+            self._json(result)
         elif parsed.path == "/api/reveal":
             self._json(self.backend.reveal(str(payload.get("path", ""))))
         elif parsed.path == "/api/quit":

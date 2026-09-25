@@ -25,6 +25,7 @@ import os
 import re
 import shutil
 import subprocess
+import secrets
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -381,19 +382,25 @@ def refresh_liveness(sessions: Sequence[Session], root_for) -> None:
         agent = session.agent
         if agent.key not in registries:
             registries[agent.key] = load_live_registry(root_for(agent), agent=agent)
-        record = registries[agent.key].get(session.session_id)
-        if record:
-            session.live_pid = record.get("pid")
-            session.live_name = record.get("name")
-            session.live_status = record.get("status")
-            session.live_reason = f"process {record.get('pid')}"
-            continue
         try:
             mtime = datetime.fromtimestamp(session.transcript.stat().st_mtime, tz=timezone.utc)
         except OSError:
-            continue
-        if agent.live_window and (now - mtime).total_seconds() < agent.live_window:
-            session.live_reason = "active moments ago"
+            mtime = datetime.min.replace(tzinfo=timezone.utc)
+        _mark_live(session, registries[agent.key].get(session.session_id), mtime, now)
+
+
+def _mark_live(session: Session, record: dict | None, mtime: datetime, now: datetime) -> None:
+    """Hold a session back if its agent says it is running, or it was written to
+    moments ago by an agent whose sessions do not register. Never clears a hold."""
+    if record:
+        session.live_pid = record.get("pid")
+        session.live_name = record.get("name")
+        session.live_status = record.get("status")
+        session.live_reason = f"process {record.get('pid')}"
+        if session.cwd is None and record.get("cwd"):
+            session.cwd = Path(record["cwd"])
+    elif session.agent.live_window and (now - mtime).total_seconds() < session.agent.live_window:
+        session.live_reason = "active moments ago"
 
 
 def scan_sessions(
@@ -465,16 +472,7 @@ def scan_sessions(
             # An incomplete tail gives only a lower bound, so leave it unknown.
             session.turns = count if complete else None
 
-        registry = live.get(session_id)
-        if registry:
-            session.live_pid = registry.get("pid")
-            session.live_name = registry.get("name")
-            session.live_status = registry.get("status")
-            session.live_reason = f"process {registry.get('pid')}"
-            if session.cwd is None and registry.get("cwd"):
-                session.cwd = Path(registry["cwd"])
-        elif agent.live_window and (now - mtime).total_seconds() < agent.live_window:
-            session.live_reason = "active moments ago"
+        _mark_live(session, live.get(session_id), mtime, now)
 
         sessions.append(session)
 
@@ -740,11 +738,6 @@ def _quote_sh(text: str) -> str:
     return "'" + text.replace("'", "'\\''") + "'"
 
 
-def _wt_text(text: str) -> str:
-    """A value wt.exe will not split: it treats every `;` as a command break."""
-    return text.replace(";", "\\;")
-
-
 def render_commands(sessions: Sequence[Session], *, shell: str = "pwsh") -> str:
     """Produce the paste-ready `cd` + resume command pairs."""
     lines: list[str] = []
@@ -889,16 +882,30 @@ def render_launcher(
     # One wt.exe call with `;`-separated tabs; the semicolons belong to wt, so
     # PowerShell must not eat them, hence the backtick escape. A semicolon inside
     # a name or a folder would be read as one of them, so it goes to wt as `\;`.
+    # Past a couple of hundred tabs one call overflows Windows' command line, so
+    # the tabs go in several calls to one named window, as the live launch does.
     tab_profile = f"-p {_quote_ps(profile)} " if profile else ""
-    parts: list[str] = [f"  & $wt -w {_quote_ps(window)}"]
-    for index, session in enumerate(usable):
-        prefix = "    " if index == 0 else "    `; "
-        parts.append(
-            f"{prefix}new-tab {tab_profile}--title {_quote_ps(_wt_text(session.label))} "
-            f"-d {_quote_ps(_wt_text(str(session.cwd)))} "
-            f"$shell -NoExit -Command {_quote_ps(_wt_text(session.resume_command))}"
-        )
-    invocation = " `\n".join(parts)
+    groups = terminals.budget_groups(
+        [terminals.wt_tab_cost(s.label, str(s.cwd), s.resume_command) for s in usable],
+        terminals.WT_COMMAND_LINE,
+    )
+    target = window if len(groups) == 1 or window != "new" else f"revenant-{secrets.token_hex(4)}"
+    calls: list[str] = []
+    for number, group in enumerate(groups):
+        parts: list[str] = [f"  & $wt -w {_quote_ps(target)}"]
+        for index, job in enumerate(group):
+            session = usable[job]
+            prefix = "    " if index == 0 else "    `; "
+            parts.append(
+                f"{prefix}new-tab {tab_profile}--title {_quote_ps(terminals.wt_text(session.label))} "
+                f"-d {_quote_ps(terminals.wt_text(str(session.cwd)))} "
+                f"$shell -NoExit -Command {_quote_ps(terminals.wt_text(session.resume_command))}"
+            )
+        call = " `\n".join(parts)
+        if number < len(groups) - 1:
+            call += "\n  if ($LASTEXITCODE -ne 0) { throw 'wt.exe failed' }\n  Start-Sleep -Milliseconds 1000"
+        calls.append(call)
+    invocation = "\n".join(calls)
 
     # wt.exe is a Store alias in an ACL-locked folder; some shells cannot run it.
     fallback = [
@@ -970,10 +977,16 @@ def launch(
     profile: str | None = None,
     dry_run: bool = False,
     stream=None,
+    landed: list | None = None,
 ) -> int:
-    """Open the selected sessions in a terminal."""
+    """Open the selected sessions in a terminal.
+
+    `landed`, when given, is filled with the sessions whose terminal came up, so
+    a caller can tell them from the ones that failed or were held back.
+    """
     stream = stream if stream is not None else sys.stdout
-    usable = [s for s in sessions if s.cwd]
+    # One session named twice would be opened twice on the same transcript.
+    usable = list({s.session_id: s for s in sessions if s.cwd}.values())
     if not usable:
         print("Nothing to launch: no session has a known directory.", file=stream)
         return 1
@@ -1002,14 +1015,18 @@ def launch(
         return 0
 
     jobs = [session.job() for session in usable]
-    opened, message = terminals.run(plan)
+    # Always through terminals.run: it is the one door to a real terminal, and
+    # the one every test stands in for.
+    result = terminals.run(plan)
+    opened, message = result
     if not opened and not terminal:
         # A terminal can look available and still refuse to run, so try the next one.
         for candidate in terminals.fallbacks(chosen, layout=layout):
             print(f"{chosen.label} would not start ({message}); trying {candidate.label}.", file=stream)
             chosen = candidate
             plan = candidate.plan(jobs, layout=layout, window=window, profile=profile)
-            opened, message = terminals.run(plan)
+            result = terminals.run(plan)
+            opened, message = result
             if opened:
                 break
     if not opened:
@@ -1020,10 +1037,12 @@ def launch(
     # honour the layout has already said so in its note.
     tabbed = plan.layout == terminals.LAYOUT_TABS
     where = "tab" if tabbed else "window"
-    # A call that carries several tabs counts as one opened command, so a plan
-    # with fewer calls than sessions has put them all in; one call per tab is
-    # counted as it went.
-    count = len(usable) if tabbed and len(plan.commands) < len(usable) else opened
+    # Counted by what each command carried, not by commands: one call can hold
+    # every tab, and one of several calls can fail while the others came up.
+    arrived = terminals.arrived(plan, result, len(jobs))
+    if landed is not None:
+        landed.extend(usable[index] for index in arrived)
+    count = len(arrived)
     print(f"Opened {_plural(count, where)} in {chosen.label}.", file=stream)
     if message:
         print(message, file=stream)
@@ -1335,6 +1354,9 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
         print(f"\nWrote {target} ({_plural(len(selected), 'session')}). Run it to bring them back.", file=stream)
 
     if args.launch:
+        # The table can be minutes old by the time --pick is answered, and a
+        # session resumed by hand meanwhile must not be opened a second time.
+        refresh_liveness(selected, lambda each: each.config_dir() if args.all_agents else root)
         return launch(
             selected,
             terminal=args.terminal,

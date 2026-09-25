@@ -21,6 +21,10 @@ from pathlib import Path
 #: How long a spawned terminal gets to fail before it counts as opened. Long
 #: enough to catch an immediate exit, short enough not to be felt.
 EARLY_EXIT_GRACE = 1.0
+#: How long a serial command gets to finish before the next one starts anyway.
+#: Launchers hand off and return at once; a terminal that is its own window
+#: never returns, and must not hold the rest up.
+SERIAL_WAIT = 2.0
 #: How much of Windows' 32,767-character command line one wt.exe call may use,
 #: leaving room for the binary's own path and the window argument.
 WT_COMMAND_LINE = 30_000
@@ -65,6 +69,12 @@ class Plan:
     #: Commands that must run one after another: each needs what the one before
     #: it opened, like a tab that goes into the window the last call made.
     serial: bool = False
+    #: Seconds to wait after each serial command. A launcher that hands off and
+    #: exits at once has not necessarily brought its window up yet.
+    pause: float = 0.0
+    #: How many jobs each command opens, in order, when that is neither one per
+    #: command nor all in one. Commands in `overhead` open none.
+    carries: tuple[int, ...] = ()
     #: What this plan actually does, which is not always what was asked for: a
     #: backend that cannot script tabs reports `windows` here and says so in the
     #: note, so the caller never claims to have opened tabs that do not exist.
@@ -72,6 +82,14 @@ class Plan:
 
     def directory(self, index: int) -> str:
         return self.cwds[index] if index < len(self.cwds) else ""
+
+    def shares(self, jobs: int) -> list[int]:
+        """How many of `jobs` each command opens: one each, or all in one."""
+        if self.carries:
+            return list(self.carries)
+        real = [i for i in range(len(self.commands)) if i not in self.overhead]
+        each = jobs if len(real) == 1 else 1
+        return [0 if i in self.overhead else each for i in range(len(self.commands))]
 
     def render(self) -> str:
         lines = []
@@ -92,6 +110,31 @@ def _posix_payload(job: Job) -> str:
     """
     shell = os.environ.get("SHELL") or "/bin/sh"
     return f"cd {shlex.quote(job.cwd)} && {job.command}; exec {shlex.quote(shell)} -i"
+
+
+def wt_text(value: str) -> str:
+    """A value wt.exe will not split. It reads every `;` as a break between
+    commands, quoted or not, and `\\;` as a literal one."""
+    return value.replace(";", "\\;")
+
+
+def budget_groups(costs: list[int], budget: int) -> list[list[int]]:
+    """Split items into runs whose summed cost stays within `budget`, in order."""
+    groups: list[list[int]] = [[]]
+    size = 0
+    for index, cost in enumerate(costs):
+        if groups[-1] and size + cost > budget:
+            groups.append([])
+            size = 0
+        groups[-1].append(index)
+        size += cost
+    return groups
+
+
+def wt_tab_cost(label: str, cwd: str, command: str) -> int:
+    """Characters one tab adds to a wt.exe command line, separator included."""
+    return len(subprocess.list2cmdline(["new-tab", "--title", label, "-d", cwd,
+                                        "powershell", "-NoExit", "-Command", command])) + 3
 
 
 def _applescript_string(text: str) -> str:
@@ -204,14 +247,12 @@ class WindowsTerminal(Terminal):
         binary = windows_terminal_binary() or "wt.exe"
 
         def tab(job: Job) -> list[str]:
-            # Windows Terminal splits its command line on every `;`, quoted or
-            # not, so a folder or a session name with one in it would cut the tab
-            # in two. `\;` is its escape for a literal one.
-            text = lambda value: value.replace(";", "\\;")  # noqa: E731
-            argv = ["new-tab", "--title", text(job.label), "-d", text(job.cwd)]
+            # A folder or a session name with a `;` in it would otherwise cut
+            # the tab in two.
+            argv = ["new-tab", "--title", wt_text(job.label), "-d", wt_text(job.cwd)]
             if profile:
                 argv += ["-p", profile]
-            return argv + [shell, "-NoExit", "-Command", text(job.command)]
+            return argv + [shell, "-NoExit", "-Command", wt_text(job.command)]
 
         if self.settle(layout) == LAYOUT_WINDOWS:
             # `-w new` is what makes each call a window of its own, so it overrides
@@ -226,28 +267,22 @@ class WindowsTerminal(Terminal):
         # A Windows command line holds 32,767 characters, which a couple of
         # hundred tabs pass. Past that the tabs go in several calls to one named
         # window, run in turn so each finds the window the first one made.
-        groups: list[list[list[str]]] = [[]]
-        size = 0
-        for job in jobs:
-            piece = tab(job)
-            cost = len(subprocess.list2cmdline(piece)) + 3
-            if groups[-1] and size + cost > WT_COMMAND_LINE:
-                groups.append([])
-                size = 0
-            groups[-1].append(piece)
-            size += cost
+        pieces = [tab(job) for job in jobs]
+        groups = budget_groups([len(subprocess.list2cmdline(p)) + 3 for p in pieces], WT_COMMAND_LINE)
         target = window
         if len(groups) > 1 and window == "new":
             target = f"revenant-{secrets.token_hex(4)}"
         commands = []
         for group in groups:
             argv: list[str] = [binary, "-w", target]
-            for index, piece in enumerate(group):
+            for index, job in enumerate(group):
                 if index:
                     argv.append(";")
-                argv += piece
+                argv += pieces[job]
             commands.append(argv)
-        return Plan(self.key, commands, layout=LAYOUT_TABS, serial=len(commands) > 1)
+        split = len(commands) > 1
+        return Plan(self.key, commands, layout=LAYOUT_TABS, serial=split, pause=1.0 if split else 0.0,
+                    carries=tuple(len(group) for group in groups))
 
 
 class WindowsConsole(Terminal):
@@ -406,6 +441,8 @@ class Konsole(Terminal):
         chosen = self.settle(layout)
         # Without --new-tab konsole opens a window, which is exactly the other half.
         where = ["--new-tab"] if chosen == LAYOUT_TABS else []
+        # The first konsole started is the window the rest attach to, so they
+        # have to wait for it rather than each opening a window of its own.
         return Plan(
             self.key,
             [
@@ -413,6 +450,7 @@ class Konsole(Terminal):
                 for job in jobs
             ],
             layout=chosen,
+            serial=chosen == LAYOUT_TABS,
         )
 
 
@@ -708,8 +746,28 @@ def available_terminals() -> list[Terminal]:
     return [terminal for terminal in seen if terminal.available()]
 
 
-def run(plan: Plan) -> tuple[int, str]:
-    """Execute a plan. Returns (opened, message).
+@dataclass(frozen=True)
+class Outcome:
+    """What running a plan put on screen."""
+
+    #: Commands that brought something up, setup steps not counted.
+    opened: int
+    note: str
+    #: Per command, whether it came up.
+    landed: tuple[bool, ...]
+
+    def jobs(self, plan: Plan, count: int) -> list[int]:
+        """Indices of the jobs whose command came up."""
+        found, start = [], 0
+        for index, share in enumerate(plan.shares(count)):
+            if index < len(self.landed) and self.landed[index]:
+                found.extend(range(start, min(count, start + share)))
+            start += share
+        return found
+
+
+def outcome(plan: Plan) -> Outcome:
+    """Execute a plan and say, command by command, what came up.
 
     A terminal that spawns and then quits leaves nothing on screen, which is how
     Windows Terminal fails on a bad profile or an unreadable directory, so the
@@ -718,39 +776,75 @@ def run(plan: Plan) -> tuple[int, str]:
     # Each console gets its own window instead of fighting over the parent's.
     creation = 0x00000010 if (plan.new_console and WINDOWS) else 0
 
-    opened, failures = 0, []
-    started: list[subprocess.Popen] = []
+    landed = [False] * len(plan.commands)
+    failures: list[str] = []
+    started: list[tuple[int, subprocess.Popen]] = []
     for index, argv in enumerate(plan.commands):
         cwd = plan.directory(index) or None
         try:
             if plan.terminal == "tmux":
                 subprocess.run(argv, check=True, capture_output=True, timeout=30)
-                if index not in plan.overhead:
-                    opened += 1
+                landed[index] = True
             else:
                 process = subprocess.Popen(argv, cwd=cwd, close_fds=True, creationflags=creation)
-                started.append(process)
+                started.append((index, process))
                 if plan.serial:
                     try:
-                        process.wait(timeout=10)
+                        process.wait(timeout=SERIAL_WAIT)
                     except subprocess.TimeoutExpired:
                         pass  # still running is fine; the next one just goes
+                    if plan.pause:
+                        time.sleep(plan.pause)
         except (OSError, subprocess.SubprocessError) as exc:
             if index not in plan.optional:
                 failures.append(str(exc))
 
     deadline = time.monotonic() + EARLY_EXIT_GRACE
-    for process in started:
+    for index, process in started:
         try:
             code = process.wait(timeout=max(0.0, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
-            opened += 1  # still up, so it is a window on screen
+            landed[index] = True  # still up, so it is a window on screen
             continue
         if code == 0:
-            opened += 1  # a launcher that handed off and returned
+            landed[index] = True  # a launcher that handed off and returned
         else:
             failures.append(f"{plan.terminal} exited with status {code}")
 
-    if failures:
-        return opened, "; ".join(failures[:3])
-    return opened, plan.note
+    opened = sum(1 for index, up in enumerate(landed) if up and index not in plan.overhead)
+    note = "; ".join(failures[:3]) if failures else plan.note
+    return Outcome(opened, note, tuple(landed))
+
+
+class Ran(tuple):
+    """(opened, message), which is what every caller unpacks, carrying which
+    commands came up alongside for a caller that needs to know."""
+
+    landed: tuple[bool, ...] = ()
+
+    def __new__(cls, opened: int, note: str, landed: tuple[bool, ...] = ()):
+        self = super().__new__(cls, (opened, note))
+        self.landed = tuple(landed)
+        return self
+
+
+def arrived(plan: Plan, ran: tuple, count: int) -> list[int]:
+    """Indices of the jobs whose command came up.
+
+    A result without per-command detail, such as a stand-in, counts every job
+    when anything opened and none when nothing did.
+    """
+    landed = getattr(ran, "landed", ())
+    if not landed:
+        return list(range(count)) if ran[0] else []
+    return Outcome(ran[0], ran[1], landed).jobs(plan, count)
+
+
+def run(plan: Plan) -> Ran:
+    """Execute a plan. Returns (opened, message), with `.landed` per command.
+
+    This is the one door every launch goes through, so a test that stands in
+    for it stands in for every terminal.
+    """
+    result = outcome(plan)
+    return Ran(result.opened, result.note, result.landed)

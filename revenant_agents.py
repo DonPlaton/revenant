@@ -335,7 +335,17 @@ class ClaudeCode(Agent):
         """What the user typed within the last `window` bytes, and any names seen."""
         prompts: list[str] = []
         names: dict[str, str] = {}
-        for record in _tail_records(transcript, window=window):
+        for line in _tail_lines(transcript, window=window):
+            # Parsing every tool result to find the odd prompt costs more than the
+            # rest of the scan; a user record always says "user".
+            if b'"user"' not in line and not any(kind.encode() in line for kind in _TITLE_TYPES):
+                continue
+            try:
+                record = json.loads(line.decode("utf-8", errors="replace"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(record, dict):
+                continue
             kind = record.get("type")
             if kind in _TITLE_TYPES:
                 _collect_title(record, names)
@@ -375,7 +385,7 @@ class ClaudeCode(Agent):
             names = seen or names
             if prompts or whole or window >= SEARCH_CAP:
                 break
-            window *= 8
+            window = min(window * 8, SEARCH_CAP)
 
         _remember_title(_stamp(transcript), _best_title(names))
         if not prompts:
@@ -549,7 +559,7 @@ class Codex(Agent):
                 return (prompts[0] if whole else ""), prompts[-1], len(prompts), whole
             if whole or window >= SEARCH_CAP:
                 return "", "", 0, whole
-            window *= 8
+            window = min(window * 8, SEARCH_CAP)
 
     def history(self, root: Path) -> dict[str, list[tuple[datetime, str, str]]]:
         index: dict[str, list[tuple[datetime, str, str]]] = defaultdict(list)
