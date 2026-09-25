@@ -252,7 +252,7 @@ def test_a_dealt_revival_launches_while_the_cards_are_in_the_air(page: str) -> N
     click; the terminals take a moment to appear anyway, so the ask goes out as
     the first card leaves the deck."""
     engine = _shuffle_engine(page)
-    assert "launch: 1340" in engine
+    assert "launch: 1480" in engine
     assert "const LANDED = T.launch + DEAL * (SHOWN - 1) + FLIGHT;" in engine
     assert "if (!launched && t >= T.launch) {" in engine
     assert "onLaunch: resolve," in _dealer(page)
@@ -385,7 +385,7 @@ const fake = () => {
     clientWidth: 0, clientHeight: 0,
     classList: { set: new Set(), contains(c) { return this.set.has(c); },
                  toggle(c, on) { on ? this.set.add(c) : this.set.delete(c); } },
-    setAttribute() {}, appendChild() {}, querySelector: () => fake(),
+    setAttribute() {}, getAttribute: () => "", appendChild() {}, querySelector: () => fake(),
     querySelectorAll: () => [fake(), fake()],
   };
   let first = null;
@@ -458,7 +458,7 @@ def test_the_shuffling_figure_is_the_icon_with_its_eyes_shut(page: str) -> None:
     assert len(re.findall(r'<circle class="pupil" cx="32"[^>]*/>', figure)) == 1
     assert len(re.findall(r'<ellipse class="mouth"[^>]*/>', figure)) == 1
     derived = page.split("const SHUFFLE_FIGURE = FIGURE", 1)[1].split(";\n", 1)[0]
-    for part in ("sh-figure", "sh-bliss", "sh-face", "sh-glint", "sh-spec", "sh-rim", "sh-lips", "sh-tongue", "sh-smile"):
+    for part in ("sh-figure", "sh-bliss", "sh-face", "sh-o", "sh-line"):
         assert part in derived, f"{part} is not put into the shuffling figure"
 
 
@@ -531,3 +531,72 @@ def test_the_deal_does_not_let_clicks_through_to_hidden_rows(page: str) -> None:
     stage = page.split(".sh-stage{", 1)[1].split("}", 1)[0]
     assert "pointer-events:none" not in stage
     assert 'el.raise.dataset.busy === "true" ? "RAISING"' in page
+
+
+
+_MOUTH_HARNESS = r"""
+const made = [];
+const fake = () => {
+  const el = {
+    style: { setProperty() {} }, dataset: {}, textContent: "", innerHTML: "", attrs: {}, kids: {},
+    clientWidth: 902, clientHeight: 398,
+    classList: { set: new Set(), contains(c) { return this.set.has(c); },
+                 toggle(c, on) { on ? this.set.add(c) : this.set.delete(c); } },
+    setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k] || ""; },
+    appendChild() {}, querySelector(sel) { return (this.kids[sel] = this.kids[sel] || fake()); },
+    querySelectorAll: () => [fake(), fake()],
+  };
+  let first = null;
+  Object.defineProperty(el, "firstChild", { get: () => (first = first || fake()) });
+  made.push(el);
+  return el;
+};
+globalThis.document = { createElement: fake };
+globalThis.requestAnimationFrame = () => 0;
+const stillness = () => false;
+%ENGINE%
+const host = fake();
+const show = startShuffle(host, { count: 8, layout: "tabs", figure: "", agents: Array(8).fill("claude-code"),
+                                  names: Array(8).fill("x"), below: 48 });
+const figure = made.find((el) => el.className === "sh-ghost");
+const o = figure.kids[".sh-o"], line = figure.kids[".sh-line"];
+const at = (t) => { show.render(t); return { rx: Number(o.attrs.rx), ry: Number(o.attrs.ry),
+                                            line: Number(line.style.opacity), d: line.attrs.d }; };
+console.log(JSON.stringify({ wait: at(200), sing: at(640), deal: at(1700), landed: at(2600) }));
+"""
+
+
+def test_the_mouth_goes_level_then_o_then_smile(page: str, tmp_path) -> None:
+    """A level line while it waits, an O while it nods, a smile once it deals."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    engine = page.split("  const SHUFFLE_FROM = 6;", 1)[1].split("  // Lays the stage over the register", 1)[0]
+    script = tmp_path / "mouth.js"
+    script.write_text(_MOUTH_HARNESS.replace("%ENGINE%", engine), encoding="utf-8")
+    ran = subprocess.run([node, str(script)], capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stderr.strip()
+    import json
+    seen = json.loads(ran.stdout)
+
+    def bend(d: str) -> float:
+        numbers = [float(n) for n in re.findall(r"-?[\d.]+", d)]
+        return numbers[3] - numbers[1]  # control point below the ends is a smile
+
+    assert seen["wait"]["rx"] == 0 and seen["wait"]["line"] == 1 and abs(bend(seen["wait"]["d"])) < 0.01
+    assert seen["sing"]["rx"] > 1.5 and seen["sing"]["line"] < 0.05
+    assert seen["deal"]["rx"] < 0.05 and seen["deal"]["line"] == 1 and bend(seen["deal"]["d"]) > 1
+    assert bend(seen["landed"]["d"]) > bend(seen["deal"]["d"]), "wider when the cards have landed"
+
+
+def test_the_dealing_figure_keeps_the_icons_three_colours(page: str) -> None:
+    """Orange, black and white, as in the icon: no gradients, no fourth colour."""
+    derived = page.split("const SHUFFLE_FIGURE = FIGURE", 1)[1].split(";\n", 1)[0]
+    assert "Gradient" not in derived and "<defs" not in derived
+    styles = page.split("/* ── the shuffle", 1)[1].split("/* ── states", 1)[0]
+    figure_rules = re.findall(r"(\.sh-(?:ghost|o|line|bliss)(?![\w-])[^{]*)\{([^}]*)\}", styles)
+    assert figure_rules
+    allowed = {"currentcolor", "#000", "#fff", "#f4efe6", "#191715", "none", "var(--ember)"}
+    for selector, body in figure_rules:
+        for prop, value in re.findall(r"(fill|stroke|color|background)\s*:\s*([^;]+)", body):
+            assert value.strip().lower() in allowed, f"{selector.strip()} {prop}: {value}"

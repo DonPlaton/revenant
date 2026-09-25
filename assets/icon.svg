@@ -1,24 +1,35 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Revenant">
   <defs>
-    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2b2926"/>
-      <stop offset="1" stop-color="#161513"/>
+    <!-- A near-black tile, domed a little toward the light, so it reads as an
+         object on any wallpaper without a pattern to crowd the figure. -->
+    <radialGradient id="dome" cx="0.5" cy="0.28" r="0.82">
+      <stop offset="0" stop-color="#282523"/>
+      <stop offset="0.62" stop-color="#121110"/>
+      <stop offset="1" stop-color="#070606"/>
+    </radialGradient>
+    <!-- The tile's edge: lit along the top, sunk along the bottom. -->
+    <linearGradient id="bevel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.26"/>
+      <stop offset="0.22" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.8" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.6"/>
     </linearGradient>
-    <linearGradient id="ghost" x1="0.2" y1="0" x2="0.8" y2="1">
-      <stop offset="0" stop-color="#eb9a7c"/>
-      <stop offset="1" stop-color="#d1653f"/>
-    </linearGradient>
-    <radialGradient id="halo" cx="0.5" cy="0.36" r="0.55">
-      <stop offset="0" stop-color="#d97757" stop-opacity="0.42"/>
-      <stop offset="1" stop-color="#d97757" stop-opacity="0"/>
+    <radialGradient id="halo" cx="0.5" cy="0.42" r="0.5">
+      <stop offset="0" stop-color="#dd7b52" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#dd7b52" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cast">
+      <stop offset="0" stop-color="#000" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
   <style>
-    /* Shading and a halo turn to mush below about 40px, and the face closes up.
-       The builder sets these classes on the root to draw a plainer figure for
-       the small entries in the .ico rather than shrinking the detailed one. */
-    .small .sheen, .small .shade, .small .halo { display: none; }
+    /* Shading, the halo and the shadow turn to mush below about 40px, and the
+       face closes up. The builder sets these classes on the root to draw a
+       plainer figure for the small entries in the .ico rather than shrinking
+       the detailed one. */
+    .small .sheen, .small .shade, .small .halo, .small .cast { display: none; }
     .small .sclera { rx: 6.4px; ry: 6.9px; }
     .small .pupil { r: 3px; }
     .tiny .mouth { display: none; }
@@ -26,25 +37,27 @@
     .tiny .pupil { r: 3.4px; }
   </style>
 
-  <rect width="256" height="256" rx="58" fill="url(#plate)"/>
-  <rect x="1.5" y="1.5" width="253" height="253" rx="56.5" fill="none" stroke="#3a3733" stroke-width="3"/>
-  <circle class="halo" cx="128" cy="112" r="92" fill="url(#halo)"/>
+  <rect width="256" height="256" rx="58" fill="url(#dome)"/>
+  <rect x="3.5" y="3.5" width="249" height="249" rx="54.5" fill="none" stroke="url(#bevel)" stroke-width="4"/>
+  <circle class="halo" cx="128" cy="116" r="100" fill="url(#halo)"/>
+  <ellipse class="cast" cx="128" cy="206" rx="70" ry="12" fill="url(#cast)"/>
 
-  <!-- The revenant: a shrouded figure whose hem breaks into the peaks of a
-       terminal caret. The app animates this same drawing. -->
-  <g transform="translate(68.2 46) scale(2.72)" fill="url(#ghost)">
-    <path d="M4 42V21C4 10.5 12 2.5 22 2.5S40 10.5 40 21v21z"/>
-    <path d="M4 41.4h7.2L7.6 50z"/>
-    <path d="M11.2 41.4h7.2L14.8 48z"/>
-    <path d="M18.4 41.4h7.2L22 51z"/>
-    <path d="M25.6 41.4h7.2L29.2 48z"/>
-    <path d="M32.8 41.4h7.2L36.4 50z"/>
-    <path class="shade" d="M30 3.6C36 7 40 13.4 40 21v21h-6V21c0-7-1.6-13.2-4-17.4z" fill="#000" opacity="0.16"/>
-    <path class="sheen" d="M14.6 5.2C11 8.6 9 14.2 9 21v12H6V21c0-6.6 3.2-12.8 8.6-15.8z" fill="#fff" opacity="0.22"/>
+  <!-- The revenant: a round head over a sheet whose hem breaks into the peaks
+       of a terminal caret, in the app's three colours. The app animates this
+       same drawing. -->
+  <g transform="translate(60.5 44) scale(3)" fill="#dd7b52">
+    <path d="M5.5 21C5.5 10.6 13 2.5 22.5 2.5S39.5 10.6 39.5 21C39.5 30 41.6 37.2 44.5 43H0.5C3.4 37.2 5.5 30 5.5 21Z"/>
+    <path d="M0.5 42.4h8.8L2.4 51z"/>
+    <path d="M9.3 42.4h8.8L13.7 48.6z"/>
+    <path d="M18.1 42.4h8.8L22.5 52z"/>
+    <path d="M26.9 42.4h8.8L31.3 48.6z"/>
+    <path d="M35.7 42.4h8.8L42.6 51z"/>
+    <path class="shade" d="M31.2 4.4C36.4 7.4 39.5 13.6 39.5 21C39.5 30 41.6 37.2 44.5 43H38.6C36.4 37.2 34.4 30 34.4 21C34.4 14.8 33.3 8.6 31.2 4.4Z" fill="#000" opacity="0.16"/>
+    <path class="sheen" d="M15 5.2C11 7.9 8.9 13.6 8.9 20.4V29.4C8.9 31.1 6.5 31.1 6.5 29.4V20.8C6.5 13.6 10 7.8 15 5.2Z" fill="#fff" opacity="0.22"/>
     <ellipse class="sclera" cx="15.4" cy="21.5" rx="5.3" ry="6" fill="#f4efe6"/>
     <ellipse class="sclera" cx="29.6" cy="21.5" rx="5.3" ry="6" fill="#f4efe6"/>
     <circle class="pupil" cx="17.8" cy="22.6" r="2.5" fill="#191715"/>
     <circle class="pupil" cx="32" cy="22.6" r="2.5" fill="#191715"/>
-    <ellipse class="mouth" cx="22.4" cy="33.4" rx="2.5" ry="3" fill="#191715" opacity="0.85"/>
+    <ellipse class="mouth" cx="22.5" cy="33.4" rx="2.5" ry="3" fill="#191715" opacity="0.85"/>
   </g>
 </svg>

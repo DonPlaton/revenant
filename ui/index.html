@@ -269,16 +269,17 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 .sh-scene{transform-origin:0 0}
 .sh-ghost{transform-origin:50% 86%}
 .sh-ghost svg{display:block;width:100%;height:100%;overflow:visible;color:var(--ember)}
-.sh-ghost .body,.sh-ghost .peak{fill:url(#sh-lit)}
-.sh-spec{fill:url(#sh-gloss)}
-.sh-rim{fill:none;stroke:#ffe4d4;stroke-opacity:.24;stroke-width:.8;stroke-linecap:round}
-.sh-ghost .sclera{fill:url(#sh-sclera)}
+.sh-ghost .body,.sh-ghost .peak{fill:currentColor}
+.sh-ghost .shade{fill:#000;opacity:.16}
+.sh-ghost .sheen{fill:#fff;opacity:.22}
+.sh-ghost .sclera{fill:#f4efe6}
 .sh-ghost .pupil{fill:#191715}
-.sh-glint{fill:#fff}
 .sh-ghost .eyes{transform-box:fill-box;transform-origin:center}
-.sh-lips{fill:#191715}
-.sh-tongue{fill:#b4524a}
-.sh-smile{fill:none;stroke:#191715;stroke-width:1.35;stroke-linecap:round}
+.sh-o{fill:#191715}
+.sh-line{fill:none;stroke:#191715;stroke-width:1.5;stroke-linecap:round}
+/* The puff it appears in, in the page's own ink, gone in a third of a second. */
+.sh-puff,.sh-speck{position:absolute;left:0;top:0;border-radius:50%;background:var(--ink);opacity:0}
+.sh-speck{width:5px;height:5px}
 /* Soft contact shadows: a radial fall-off, no filter to redraw every frame. */
 .sh-shadow,.sh-cast{position:absolute;left:0;top:0;border-radius:50%;
   background:radial-gradient(closest-side,rgba(0,0,0,.6),rgba(0,0,0,0))}
@@ -519,21 +520,21 @@ html[data-still] .sweep{display:none}
   // it. The streaks are motion rather than identity and stay out of the icon.
   const FIGURE = `<svg class="rev" viewBox="0 0 58 58" aria-hidden="true">
       <g>
-        <path class="streak" d="M41 16h8" stroke-width="3"/>
-        <path class="streak" d="M42 26h10" stroke-width="3.4"/>
-        <path class="streak" d="M41 34h7" stroke-width="2.6"/>
+        <path class="streak" d="M45 16h8" stroke-width="3"/>
+        <path class="streak" d="M46 26h10" stroke-width="3.4"/>
+        <path class="streak" d="M45 34h7" stroke-width="2.6"/>
       </g>
-      <path class="body" d="M4 42V21C4 10.5 12 2.5 22 2.5S40 10.5 40 21v21z"/>
-      <g><path class="peak" d="M4 41.4h7.2L7.6 50z"/><path class="peak" d="M11.2 41.4h7.2L14.8 48z"/><path class="peak" d="M18.4 41.4h7.2L22 51z"/><path class="peak" d="M25.6 41.4h7.2L29.2 48z"/><path class="peak" d="M32.8 41.4h7.2L36.4 50z"/></g>
-      <path class="shade" d="M30 3.6C36 7 40 13.4 40 21v21h-6V21c0-7-1.6-13.2-4-17.4z"/>
-      <path class="sheen" d="M14.6 5.2C11 8.6 9 14.2 9 21v12H6V21c0-6.6 3.2-12.8 8.6-15.8z"/>
+      <path class="body" d="M5.5 21C5.5 10.6 13 2.5 22.5 2.5S39.5 10.6 39.5 21C39.5 30 41.6 37.2 44.5 43H0.5C3.4 37.2 5.5 30 5.5 21Z"/>
+      <g><path class="peak" d="M0.5 42.4h8.8L2.4 51z"/><path class="peak" d="M9.3 42.4h8.8L13.7 48.6z"/><path class="peak" d="M18.1 42.4h8.8L22.5 52z"/><path class="peak" d="M26.9 42.4h8.8L31.3 48.6z"/><path class="peak" d="M35.7 42.4h8.8L42.6 51z"/></g>
+      <path class="shade" d="M31.2 4.4C36.4 7.4 39.5 13.6 39.5 21C39.5 30 41.6 37.2 44.5 43H38.6C36.4 37.2 34.4 30 34.4 21C34.4 14.8 33.3 8.6 31.2 4.4Z"/>
+      <path class="sheen" d="M15 5.2C11 7.9 8.9 13.6 8.9 20.4V29.4C8.9 31.1 6.5 31.1 6.5 29.4V20.8C6.5 13.6 10 7.8 15 5.2Z"/>
       <g class="eyes">
         <ellipse class="sclera" cx="15.4" cy="21.5" rx="5.3" ry="6"/>
         <ellipse class="sclera" cx="29.6" cy="21.5" rx="5.3" ry="6"/>
         <circle class="pupil" cx="17.8" cy="22.6" r="2.5"/>
         <circle class="pupil" cx="32" cy="22.6" r="2.5"/>
       </g>
-      <ellipse class="mouth" cx="22.4" cy="33.4" rx="2.5" ry="3"/>
+      <ellipse class="mouth" cx="22.5" cy="33.4" rx="2.5" ry="3"/>
     </svg>`;
 
   // A block cursor with bracket jaws. The hem of the figure it chases is a
@@ -552,42 +553,20 @@ html[data-still] .sweep{display:none}
       </g>
     </svg>`;
 
-  // The shuffling figure is the icon's own drawing, so it cannot drift from it,
-  // lit for the size it plays at. At 150 px the icon's flat highlight and shade
-  // read as cut-out shapes, so here the body takes a soft key light from the
-  // upper left, a gloss where that light lands and a faint rim on the far edge.
-  // The speed lines come off, since it is standing still. The eyes get a
-  // glint and a shut pair to swap with, the mouth becomes a shape that can
-  // sing, and the face is grouped so it can lag the head. The root class
-  // changes too, so the masthead's blink and gasp leave these parts alone.
-  const SHUFFLE_DEFS = `<defs>
-      <radialGradient id="sh-lit" gradientUnits="userSpaceOnUse" cx="15" cy="13" r="37" fx="11.5" fy="9">
-        <stop offset="0" stop-color="#f4a882"/><stop offset=".38" stop-color="#e2835b"/>
-        <stop offset=".72" stop-color="#d06d46"/><stop offset="1" stop-color="#a6512e"/>
-      </radialGradient>
-      <radialGradient id="sh-gloss"><stop offset="0" stop-color="#fff" stop-opacity=".5"/>
-        <stop offset=".55" stop-color="#fff" stop-opacity=".14"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
-      </radialGradient>
-      <radialGradient id="sh-sclera" cx=".42" cy=".36" r=".72"><stop offset="0" stop-color="#fbf7ef"/>
-        <stop offset=".74" stop-color="#eee6d8"/><stop offset="1" stop-color="#d6cbbb"/>
-      </radialGradient>
-      <clipPath id="sh-mouth-clip"><path class="sh-mouth-shape"/></clipPath>
-    </defs>`;
+  // The shuffling figure is the icon's own drawing in the icon's three colours,
+  // so it cannot drift from it. The speed lines come off, since it is standing
+  // still. The face is grouped so it can lag the head, a shut pair of eyes goes
+  // in for the open ones to swap with, and the mouth becomes a line that can
+  // round into an O and bend into a smile. The root class changes too, so the
+  // masthead's blink and gasp leave these parts alone.
   const SHUFFLE_FIGURE = FIGURE
     .replace('class="rev"', 'class="sh-figure"')
-    .replace(/<g>\s*<path class="streak"[\s\S]*?<\/g>/, SHUFFLE_DEFS)
-    .replace(/<path class="shade"[^>]*\/>/, "")
-    .replace(/<path class="sheen"[^>]*\/>/,
-      '<ellipse class="sh-spec" cx="12.6" cy="11.4" rx="4.4" ry="6.6" transform="rotate(-24 12.6 11.4)"/>' +
-      '<path class="sh-rim" d="M30.4 5.2C35.6 8.2 38.9 13.8 38.9 21v18"/>')
+    .replace(/<g>\s*<path class="streak"[\s\S]*?<\/g>/, "")
     .replace('<g class="eyes">', '<g class="sh-face"><g class="eyes">')
-    .replace(/(<circle class="pupil" cx="32"[^>]*\/>)/,
-      '$1<circle class="sh-glint" cx="18.6" cy="21.6" r=".8"/><circle class="sh-glint" cx="32.8" cy="21.6" r=".8"/>')
     .replace(/<ellipse class="mouth"[^>]*\/>/,
       '<g class="sh-bliss" style="display:none"><path d="M11.2 23.4 15.4 19.4 19.6 23.4"/>' +
       '<path d="M25.4 23.4 29.6 19.4 33.8 23.4"/></g>' +
-      '<g class="sh-mouth"><path class="sh-mouth-shape sh-lips"/>' +
-      '<ellipse class="sh-tongue" clip-path="url(#sh-mouth-clip)"/><path class="sh-smile"/></g></g>');
+      '<ellipse class="sh-o" cx="22.5" cy="33.4" rx="0" ry="0"/><path class="sh-line"/></g>');
 
   const MOTES = [...Array(7)].map((unused, i) =>
     `<i class="mote" style="left:${96 + i * 27}px;top:${34 + (i % 4) * 15}px;` +
@@ -1148,7 +1127,7 @@ html[data-still] .sweep{display:none}
     // are still in the air: the terminals take a moment to appear, and the one
     // that lands on top reads as where they were going.
     const BEAT = 320;
-    const T = { split1: 260, riffle1: 420, split2: 740, riffle2: 900, square: 1220, launch: 1340 };
+    const T = { split1: 400, riffle1: 560, split2: 880, riffle2: 1040, square: 1360, launch: 1480 };
     const SHOWN = Math.min(N, 12);
     const DEAL = Math.min(62, 640 / Math.max(1, SHOWN - 1));
     const FLIGHT = 460;
@@ -1198,11 +1177,28 @@ html[data-still] .sweep{display:none}
     const eyes = figure.querySelector(".eyes");
     const bliss = figure.querySelector(".sh-bliss");
     const pupils = [...figure.querySelectorAll(".pupil")];
-    const glints = [...figure.querySelectorAll(".sh-glint")];
     const peaks = [...figure.querySelectorAll(".peak")];
-    const lips = [...figure.querySelectorAll(".sh-mouth-shape")];
-    const tongue = figure.querySelector(".sh-tongue");
-    const smile = figure.querySelector(".sh-smile");
+    // Where each point of the hem joins the body, read off its own path so a
+    // redrawn hem cannot leave the ripple swinging from the wrong place.
+    const roots = peaks.map((peak) => {
+      const found = /M([\d.]+)[ ,]([\d.]+)h([\d.]+)/.exec(peak.getAttribute("d") || "");
+      return found ? [Number(found[1]) + Number(found[3]) / 2, Number(found[2])] : [22.5, 42.4];
+    });
+    const mouthO = figure.querySelector(".sh-o");
+    const mouthLine = figure.querySelector(".sh-line");
+
+    // The puff it appears in: a burst of cloud with the figure popping out of it,
+    // and a few specks thrown clear.
+    const cloud = { x: ghost.x, y: ghost.y + 6 };
+    const PUFFS = [[-1, -0.35, 26], [1, -0.4, 24], [-0.55, 0.6, 22], [0.6, 0.55, 23],
+                   [0, -0.9, 22], [0, 0.25, 30], [-1.1, 0.3, 18], [1.1, 0.25, 19]];
+    const puffs = PUFFS.map(([, , r]) => {
+      const puff = add("i", "sh-puff");
+      puff.style.width = puff.style.height = `${r * 2}px`;
+      return puff;
+    });
+    const specks = [...Array(6)].map(() => add("i", "sh-speck"));
+    let cleared = false;
 
     // The riffle: cut into halves and interleave them, twice.
     const riffle = (order) => {
@@ -1343,45 +1339,23 @@ html[data-still] .sweep{display:none}
       return { d, a: ACCENT[beat % 4] * on, side: beat % 2 ? 1 : -1, on, p, beat };
     };
 
-    // Mouth shapes as width, opening and smile, in the drawing's own units.
-    // The sung vowels cycle with the beat: ah, oh, eh, oo. Every change of
-    // mood blends from the shape before it, so the mouth never jumps.
-    const VOWELS = [[6.2, 5.4, 0.6], [4.4, 5.8, 0.3], [6.8, 3.6, 0.9], [4.6, 4.8, 0.4]];
-    const PRE = [3.8, 4.4, 0], HUM = [6, 0, 1.2], OH = [4.4, 6.2, 0], GRIN = [7.8, 3.8, 2];
-    const mix = (a, b, p) => a.map((v, i) => lerp(v, b[i], p));
-    function sung(t) {
-      const g = groove(t);
-      const v = VOWELS[g.beat % 4], next = VOWELS[(g.beat + 1) % 4];
-      const shape = mix(v, next, span(g.p, 0.7, 1));
-      // Wide open on the hit, half closed between beats.
-      shape[1] *= 0.5 + 0.5 * Math.max(0, g.d) * (0.6 + 0.4 * (g.a / (g.on || 1)));
-      return shape;
-    }
-    function mouthAt(t) {
-      if (t >= LANDED) return mix(HUM, GRIN, ease(span(t, LANDED, LANDED + 160)));
-      if (t < T.square) return mix(PRE, sung(t), span(t, T.split1 - 60, T.split1 + 40));
-      // The tap earns an "oh!", then a contented hum while the cards fly.
-      const pop = span(t, T.square, T.square + 260);
-      if (pop < 0.5) return mix(sung(T.square), OH, ease(pop * 2));
-      const hum = mix(OH, HUM, ease((pop - 0.5) * 2));
-      hum[0] += Math.sin(t / 300) * 0.2 * pop;
-      return hum;
-    }
-    function drawMouth([w, h, s]) {
-      const cx = 22.4, cy = 33.4, x0 = cx - w / 2, x1 = cx + w / 2, y0 = cy - s;
-      const f = (v) => v.toFixed(2);
-      const shape = `M${f(x0)} ${f(y0)}C${f(x0 + w * 0.22)} ${f(y0 - h * 0.42)} ${f(x1 - w * 0.22)} ${f(y0 - h * 0.42)} ` +
-        `${f(x1)} ${f(y0)}C${f(x1 - w * 0.05)} ${f(y0 + h * 1.05)} ${f(x0 + w * 0.05)} ${f(y0 + h * 1.05)} ${f(x0)} ${f(y0)}Z`;
-      lips.forEach((node) => node.setAttribute("d", shape));
-      const lipsOn = span(h, 0.25, 0.9);
-      lips[lips.length - 1].style.opacity = lipsOn.toFixed(3);
-      smile.setAttribute("d", `M${f(x0)} ${f(y0)}Q${f(cx)} ${f(cy + s * 0.9 + 0.7)} ${f(x1)} ${f(y0)}`);
-      smile.style.opacity = (1 - lipsOn).toFixed(3);
-      tongue.setAttribute("cx", f(cx));
-      tongue.setAttribute("cy", f(y0 + h * 0.66));
-      tongue.setAttribute("rx", f(w * 0.3));
-      tongue.setAttribute("ry", f(h * 0.3));
-      tongue.style.opacity = span(h, 2.4, 4.4).toFixed(3);
+    // Three mouths: a level line while it waits, an O while it sings along to
+    // the beat, and a smile once the deal is under way, wider when it lands.
+    // One gives way before the next arrives, so no frame shows both.
+    function mouth(t, g) {
+      const sing = span(t, T.split1 - 45, T.split1 + 20) * (1 - span(t, T.square, T.square + 90));
+      const shown = (1 - span(t, T.split1 - 70, T.split1 - 45)) + span(t, T.square + 80, T.square + 150);
+      const beam = ease(span(t, T.square + 80, T.square + 240));
+      const grin = ease(span(t, LANDED, LANDED + 200));
+      // The O opens on each hit and eases a little between them.
+      const size = sing * (0.82 + 0.26 * Math.max(0, g.d) * (g.on ? g.a / g.on : 0));
+      mouthO.setAttribute("rx", (2.3 * size).toFixed(2));
+      mouthO.setAttribute("ry", (2.9 * size).toFixed(2));
+      const w = lerp(5, lerp(6.4, 7.6, grin), beam), bend = lerp(0, lerp(1.9, 2.8, grin), beam);
+      const cx = 22.5, cy = 33.6, lift = (cy - bend * 0.35).toFixed(2);
+      mouthLine.setAttribute("d", `M${(cx - w / 2).toFixed(2)} ${lift}Q${cx} ${(cy + bend).toFixed(2)} ` +
+        `${(cx + w / 2).toFixed(2)} ${lift}`);
+      mouthLine.style.opacity = clamp(shown).toFixed(3);
     }
 
     // The tab in front is the last one opened, and the window types the command
@@ -1402,22 +1376,44 @@ html[data-still] .sweep{display:none}
 
     function render(t) {
       const out = 1 - ease(span(t, fadeFrom, fadeFrom + 240));
-      const rise = ease(span(t, 0, 320));
+      // It pops out of the puff a little too big and settles.
+      const shown = span(t, 40, 80);
+      const pop = t < 40 ? 0 : 1 - Math.exp(-(t - 40) / 45) * Math.cos((t - 40) / 32);
       veil.style.opacity = (ease(span(t, 0, 260)) * out).toFixed(3);
-      floor.style.opacity = (rise * out).toFixed(3);
+      floor.style.opacity = (span(t, 60, 260) * out).toFixed(3);
+      if (t < 420) {
+        cleared = false;
+        puffs.forEach((puff, i) => {
+          const [dx, dy, r] = PUFFS[i];
+          const grow = ease(span(t, i * 5, 70 + i * 5)), fade = span(t, 80, 220);
+          const drift = ease(span(t, 30, 250)) * 22;
+          puff.style.opacity = (0.9 * grow * (1 - fade) * out).toFixed(3);
+          puff.style.transform = `translate(${(cloud.x + dx * (r * 0.55 + drift) - r).toFixed(1)}px, ` +
+            `${(cloud.y + dy * (r * 0.55 + drift) - r).toFixed(1)}px) ` +
+            `scale(${(lerp(0.25, 1, grow) * lerp(1, 1.3, fade)).toFixed(3)})`;
+        });
+        specks.forEach((speck, i) => {
+          const a = (i / specks.length) * Math.PI * 2 + 0.4, p = ease(span(t, 30, 240));
+          speck.style.opacity = (arc(span(t, 30, 240)) * 0.8 * out).toFixed(3);
+          speck.style.transform = `translate(${(cloud.x + Math.cos(a) * (18 + p * 62)).toFixed(1)}px, ` +
+            `${(cloud.y + Math.sin(a) * (14 + p * 48)).toFixed(1)}px) scale(${lerp(1, 0.4, p).toFixed(3)})`;
+        });
+      } else if (!cleared) {
+        cleared = true;
+        [...puffs, ...specks].forEach((node) => { node.style.opacity = "0"; });
+      }
 
       // ── the figure ──
       const g = groove(t);
       const hit = Math.max(0, g.d) ** 3 * g.a;
       const lift = Math.max(0, -g.d) * g.a;
       const tap = t >= T.square ? arc(span(t, T.square, T.square + 200)) : 0;
-      const sz = lerp(0.86, 1, rise);
+      const sz = pop;
       const sway = Math.sin(((t - T.split1) / (BEAT * 2)) * Math.PI) * 2.4 * g.on;
-      const breath = -arc(span(t, T.split1 - 150, T.split1)) * 2.2;
       const hover = Math.sin((t - T.launch) / 420) * 2.2 * span(t, T.launch + 240, T.launch + 600);
       const hop = -arc(span(t, LANDED, LANDED + 340)) * 8;
-      const gy = (1 - rise) * 24 + g.d * g.a * 4.6 + breath + tap * 3 + hover + hop;
-      figure.style.opacity = (rise * out).toFixed(3);
+      const gy = g.d * g.a * 4.6 + tap * 3 + hover + hop;
+      figure.style.opacity = (shown * out).toFixed(3);
       figure.style.transform = `translate(${(ghost.x - ghost.size / 2 + sway).toFixed(2)}px, ` +
         `${(ghost.y - ghost.size / 2 + gy).toFixed(2)}px) rotate(${(g.d * g.a * (g.side * 3.4 - 1.4)).toFixed(2)}deg) ` +
         `scale(${(sz * (1 + hit * 0.045 - lift * 0.02 + tap * 0.04)).toFixed(4)}, ` +
@@ -1433,11 +1429,11 @@ html[data-still] .sweep{display:none}
         const idle = Math.sin(t / 240 - i * 0.9);
         const wake = span(g.p, 0.18, 0.3) * Math.exp(-3.2 * Math.max(0, g.p - 0.18)) *
           Math.sin((g.p - 0.18) * 11 - i * 0.8) * g.a;
-        const root = 7.6 + i * 7.2;
-        peak.setAttribute("transform", `translate(${root} 41.4) skewX(${(idle * 4 + wake * 9).toFixed(2)}) ` +
-          `scale(1 ${(1 + idle * 0.05 + wake * 0.16).toFixed(3)}) translate(${-root} -41.4)`);
+        const [rx, ry] = roots[i];
+        peak.setAttribute("transform", `translate(${rx} ${ry}) skewX(${(idle * 4 + wake * 9).toFixed(2)}) ` +
+          `scale(1 ${(1 + idle * 0.05 + wake * 0.16).toFixed(3)}) translate(${-rx} ${-ry})`);
       });
-      shadow.style.opacity = ((0.55 + g.d * g.a * 0.12 + hop * 0.03) * rise * out).toFixed(3);
+      shadow.style.opacity = ((0.55 + g.d * g.a * 0.12 + hop * 0.03) * shown * out).toFixed(3);
       shadow.style.transform = `translate(${(ghost.x - 48 + sway).toFixed(2)}px, ${floorY - 7}px) ` +
         `scale(${(1 + g.d * g.a * 0.07 + hop * 0.025).toFixed(3)}, 1)`;
 
@@ -1445,11 +1441,11 @@ html[data-still] .sweep{display:none}
       // open again on the tap to follow each card to its slot, and shut once
       // more, pleased, when the last one lands.
       const happy = t >= LANDED + 40;
-      const shut = (t >= T.split1 - 40 && t < T.square) || happy;
+      const shut = (t >= T.split1 - 10 && t < T.square) || happy;
       eyes.style.display = shut ? "none" : "";
       bliss.style.display = shut ? "" : "none";
       let open = 1;
-      if (t >= T.split1 - 100 && t < T.split1 - 40) open = lerp(1, 0.15, span(t, T.split1 - 100, T.split1 - 40));
+      if (t >= T.split1 - 50 && t < T.split1 - 10) open = lerp(1, 0.15, span(t, T.split1 - 50, T.split1 - 10));
       if (t >= T.square) open = lerp(0.15, 1, ease(span(t, T.square, T.square + 110)));
       if (t >= LANDED - 20 && t < LANDED + 40) open = lerp(1, 0.15, span(t, LANDED - 20, LANDED + 40));
       eyes.style.transform = `scaleY(${open.toFixed(3)})`;
@@ -1465,11 +1461,7 @@ html[data-still] .sweep{display:none}
         p.setAttribute("cx", ((i ? 29.6 : 15.4) + lx).toFixed(2));
         p.setAttribute("cy", (21.5 + ly).toFixed(2));
       });
-      glints.forEach((p, i) => {
-        p.setAttribute("cx", ((i ? 29.6 : 15.4) + lx + 0.85).toFixed(2));
-        p.setAttribute("cy", (21.5 + ly - 1.05).toFixed(2));
-      });
-      drawMouth(mouthAt(t));
+      mouth(t, g);
 
       NOTES.forEach(([at, , dir], i) => {
         const pn = span(t, at, at + 900);
