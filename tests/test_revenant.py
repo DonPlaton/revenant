@@ -816,3 +816,26 @@ def test_refreshing_liveness_never_clears_a_hold(tmp_path: Path, monkeypatch) ->
     monkeypatch.setattr(revenant, "load_live_registry", lambda root, agent: {})
     revenant.refresh_liveness([session], lambda agent: tmp_path)
     assert session.is_live
+
+
+
+def test_the_ps1_launcher_escapes_semicolons_for_wt(tmp_path: Path) -> None:
+    """wt.exe splits on every `;`; a name or folder holding one used to cut a tab."""
+    session = revenant.Session(session_id="abc", transcript=tmp_path / "t.jsonl", project_slug="x",
+                               cwd=Path(r"D:\work\a;b"), title="fix; tests")
+    script = revenant.render_launcher([session], shell="pwsh", layout="tabs")
+    tab = next(line for line in script.splitlines() if "new-tab" in line)
+    assert r"'D:\work\a\;b'" in tab
+    assert ";" not in tab.replace("\\;", "").replace("`;", "")
+
+
+def test_tabs_split_over_several_calls_are_counted_as_tabs(tmp_path: Path, monkeypatch) -> None:
+    sessions = [revenant.Session(session_id=f"s{i}", transcript=tmp_path / f"{i}.jsonl", project_slug="x",
+                                 cwd=tmp_path) for i in range(5)]
+    plan = terminals.Plan("wt", [["a"], ["b"]], layout=terminals.LAYOUT_TABS, serial=True)
+    monkeypatch.setattr(revenant, "plan_launch", lambda *a, **k: (terminals.WindowsTerminal(), plan))
+    monkeypatch.setattr(terminals, "run", lambda plan: (2, ""))
+    import io
+    out = io.StringIO()
+    assert revenant.launch(sessions, stream=out) == 0
+    assert "Opened 5 tabs" in out.getvalue()

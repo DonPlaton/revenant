@@ -523,3 +523,11 @@ def test_the_deal_draws_what_the_terminal_really_opens(page: str) -> None:
     dealer = _dealer(page)
     assert "layout: drawn(layout)," in dealer
     assert 'word(drawn(layout) === "tabs"' in dealer
+
+
+
+def test_the_deal_does_not_let_clicks_through_to_hidden_rows(page: str) -> None:
+    """Marking a row nobody can see would change a revival already under way."""
+    stage = page.split(".sh-stage{", 1)[1].split("}", 1)[0]
+    assert "pointer-events:none" not in stage
+    assert 'el.raise.dataset.busy === "true" ? "RAISING"' in page

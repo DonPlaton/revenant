@@ -410,7 +410,9 @@ class ClaudeCode(Agent):
                 record = json.loads(raw)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 continue
-            _collect_title(record, names)
+            # A damaged file can leave a bare string or list on a line of its own.
+            if isinstance(record, dict):
+                _collect_title(record, names)
         return _best_title(names)
 
     def history(self, root: Path) -> dict[str, list[tuple[datetime, str, str]]]:

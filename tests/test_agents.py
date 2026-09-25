@@ -472,3 +472,12 @@ def test_a_tool_result_is_not_a_prompt(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert cc.tail(path) == ("", "", 0, True)
+
+
+
+def test_a_bare_string_on_a_title_line_does_not_break_the_listing(tmp_path: Path) -> None:
+    """A damaged transcript can leave a line that parses to a string, not an object."""
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text('"custom-title"\n{"type": "custom-title", "customTitle": "kept"}\n', encoding="utf-8")
+    title = agents.ClaudeCode().title(transcript)
+    assert isinstance(title, str)

@@ -258,7 +258,9 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 /* ── the shuffle ────────────────────────────────────────────────────────── */
 /* Laid over the register while a large revival is dealt. Everything here is
    prefixed sh-: the page already styles .bar, .name and .body globally. */
-.sh-stage{position:fixed;z-index:8;pointer-events:none;overflow:hidden}
+/* The stage takes the clicks meant for the rows under it: marking a row nobody
+   can see would change a revival already under way. */
+.sh-stage{position:fixed;z-index:8;overflow:hidden;cursor:default}
 .sh-veil{position:absolute;inset:0;
   background:radial-gradient(110% 90% at var(--gx,26%) 52%,rgba(28,26,24,.95),rgba(28,26,24,.88))}
 .sh-floor{position:absolute;left:8%;width:40%;height:1px;
@@ -1066,7 +1068,8 @@ html[data-still] .sweep{display:none}
         ` <span class="hint">Double click a row to open its folder.</span>`
       : (held ? `${held} held back, nothing to raise.` : "Nothing to raise.");
     el.raise.disabled = n === 0;
-    el.raise.textContent = n ? `REVIVE ${n}` : "REVIVE";
+    // A revival in flight keeps its word on the button whatever else repaints.
+    el.raise.textContent = el.raise.dataset.busy === "true" ? "RAISING" : n ? `REVIVE ${n}` : "REVIVE";
   }
 
   // ── actions ───────────────────────────────────────────────────────────

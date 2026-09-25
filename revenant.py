@@ -740,6 +740,11 @@ def _quote_sh(text: str) -> str:
     return "'" + text.replace("'", "'\\''") + "'"
 
 
+def _wt_text(text: str) -> str:
+    """A value wt.exe will not split: it treats every `;` as a command break."""
+    return text.replace(";", "\\;")
+
+
 def render_commands(sessions: Sequence[Session], *, shell: str = "pwsh") -> str:
     """Produce the paste-ready `cd` + resume command pairs."""
     lines: list[str] = []
@@ -882,15 +887,16 @@ def render_launcher(
         return "\n".join(head + skipped + ["Write-Host 'Revenant: nothing to restore'"]) + "\n"
 
     # One wt.exe call with `;`-separated tabs; the semicolons belong to wt, so
-    # PowerShell must not eat them, hence the backtick escape.
+    # PowerShell must not eat them, hence the backtick escape. A semicolon inside
+    # a name or a folder would be read as one of them, so it goes to wt as `\;`.
     tab_profile = f"-p {_quote_ps(profile)} " if profile else ""
     parts: list[str] = [f"  & $wt -w {_quote_ps(window)}"]
     for index, session in enumerate(usable):
         prefix = "    " if index == 0 else "    `; "
         parts.append(
-            f"{prefix}new-tab {tab_profile}--title {_quote_ps(session.label)} "
-            f"-d {_quote_ps(str(session.cwd))} "
-            f"$shell -NoExit -Command {_quote_ps(session.resume_command)}"
+            f"{prefix}new-tab {tab_profile}--title {_quote_ps(_wt_text(session.label))} "
+            f"-d {_quote_ps(_wt_text(str(session.cwd)))} "
+            f"$shell -NoExit -Command {_quote_ps(_wt_text(session.resume_command))}"
         )
     invocation = " `\n".join(parts)
 
@@ -1014,7 +1020,10 @@ def launch(
     # honour the layout has already said so in its note.
     tabbed = plan.layout == terminals.LAYOUT_TABS
     where = "tab" if tabbed else "window"
-    count = len(usable) if tabbed and len(plan.commands) == 1 else opened
+    # A call that carries several tabs counts as one opened command, so a plan
+    # with fewer calls than sessions has put them all in; one call per tab is
+    # counted as it went.
+    count = len(usable) if tabbed and len(plan.commands) < len(usable) else opened
     print(f"Opened {_plural(count, where)} in {chosen.label}.", file=stream)
     if message:
         print(message, file=stream)
