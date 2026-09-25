@@ -168,7 +168,7 @@ def test_the_revival_is_shown_before_anything_launches(page: str) -> None:
     """The terminals come up on top and take focus, so an animation that is still
     running when they start plays to nobody. The request waits for it."""
     body = _revive_handler(page)
-    wait = body.index("await (show ? show.launch : new Promise((done) => setTimeout(done, beat)));")
+    wait = body.index("await Promise.race([show ? show.launch : new Promise((done) => setTimeout(done, beat)), hurried]);")
     ask = body.index('api("/api/revive"')
     stamps = body.index('stamp.textContent = "RAISED";')
     assert stamps < wait < ask, "stamps are scheduled, then the page waits, then it asks"
@@ -323,7 +323,7 @@ def test_the_shuffle_is_composed_above_the_toast(page: str) -> None:
     it covered the bottom row of dealt windows."""
     assert "H = host.clientHeight - (opts.below || 0);" in _shuffle_engine(page)
     dealer = _dealer(page)
-    assert dealer.index("word(layout ===") < dealer.index("el.word.offsetHeight")
+    assert dealer.index("word(drawn(layout) ===") < dealer.index("el.word.offsetHeight")
     assert "below," in dealer
 
 
@@ -332,7 +332,7 @@ def test_the_request_carries_what_was_on_screen_at_the_click(page: str) -> None:
     the deal draws the layout of the click, so that is the one that is sent."""
     body = _revive_handler(page)
     captured = body.index("const sent = { ids, days: stop().days, agent, layout };")
-    assert captured < body.index("await (show ? show.launch")
+    assert captured < body.index("await Promise.race([show ? show.launch")
     assert "body: JSON.stringify(sent)," in body
 
 
@@ -342,7 +342,7 @@ def test_cards_are_dealt_in_the_order_the_terminals_open(page: str) -> None:
     engine = _shuffle_engine(page)
     assert "const rank = (id) => order2.length - 1 - order2.indexOf(id);" in engine
     assert "const dealtAt = (slot) => T.launch + slot * DEAL;" in engine
-    assert "const go = dealtAt(rank(id));" in engine
+    assert "const slot = rank(id);\n        const go = dealtAt(slot);" in engine
     assert "const front = SHOWN - 1;" in engine
 
 
@@ -408,9 +408,10 @@ for (const layout of ["tabs", "windows"]) {
           count, layout, figure: "", agents, names: agents.map((a, i) => `s${i}`), below: 48,
           origins: withOrigins ? agents.slice(0, 12).map((_, i) => ({ x: 74, y: 17.5 + 96 * i })) : undefined,
         });
-        for (let t = 0; t <= show.END + 40; t += 8) { show.render(t); frames++; }
+        const end = show.END / show.PACE;
+        for (let t = 0; t <= end + 40; t += 8) { show.render(t); frames++; }
         show.fail();
-        show.render(show.END);
+        show.render(end);
       }
     }
   }
@@ -451,8 +452,14 @@ def test_the_shuffling_figure_is_the_icon_with_its_eyes_shut(page: str) -> None:
     figure = page.split("const FIGURE = `", 1)[1].split("`;", 1)[0]
     assert figure.count('class="rev"') == 1
     assert re.search(r'<g>\s*<path class="streak"[\s\S]*?</g>', figure)
-    assert figure.count('<ellipse class="mouth"') == 1
-    assert 'class="sh-figure"' in page and 'class="sh-bliss"' in page
+    assert len(re.findall(r'<path class="shade"[^>]*/>', figure)) == 1
+    assert len(re.findall(r'<path class="sheen"[^>]*/>', figure)) == 1
+    assert figure.count('<g class="eyes">') == 1
+    assert len(re.findall(r'<circle class="pupil" cx="32"[^>]*/>', figure)) == 1
+    assert len(re.findall(r'<ellipse class="mouth"[^>]*/>', figure)) == 1
+    derived = page.split("const SHUFFLE_FIGURE = FIGURE", 1)[1].split(";\n", 1)[0]
+    for part in ("sh-figure", "sh-bliss", "sh-face", "sh-glint", "sh-spec", "sh-rim", "sh-lips", "sh-tongue", "sh-smile"):
+        assert part in derived, f"{part} is not put into the shuffling figure"
 
 
 # --------------------------------------------------------------------------- #
@@ -470,3 +477,49 @@ def test_the_copy_carries_no_stray_typography(page: str) -> None:
     """Curly quotes and em dashes arrive by autocorrect and never leave on their own."""
     for stray in "—–“”‘’":
         assert stray not in page, f"stray {stray!r} in the interface copy"
+
+
+
+# --------------------------------------------------------------------------- #
+# a revival's loose ends
+# --------------------------------------------------------------------------- #
+def test_escape_during_a_revival_skips_the_show_and_launches(page: str) -> None:
+    """Escape used to close the window during the wait and lose the revival."""
+    assert 'if (revival) revival.hurry();\n      else $("shut").click();' in page
+    body = _revive_handler(page)
+    assert "hurry: () => { hurry(); if (show) show.stop(); }," in body
+    assert "finished();\n    revival = null;" in body
+
+
+def test_closing_during_a_revival_sends_it_first(page: str) -> None:
+    shut = page.split('$("shut").addEventListener("click", async () => {', 1)[1].split("\n  });", 1)[0]
+    assert shut.index("revival.hurry();") < shut.index("bridge.destroy()")
+    assert "setTimeout(done, 8000)" in shut, "a hung request cannot keep the window open for good"
+
+
+def test_every_request_gives_up_in_the_end(page: str) -> None:
+    """A hung service used to leave REVIVE reading RAISING for good."""
+    assert "const quit = new AbortController();" in page
+    assert "signal: quit.signal" in page
+    body = _revive_handler(page)
+    assert "}, 60000);" in body
+    assert 'e.name === "AbortError"' in body
+
+
+def test_a_session_raised_a_moment_ago_is_not_marked_again(page: str) -> None:
+    """Until its new process registers as live it looks dead, and a reload used to
+    mark it again for a second click to open twice."""
+    assert "chosen = new Set(sessions.filter((s) => !s.live && !freshlyRaised(s.sessionId))" in page
+    success = _revive_handler(page).split("if (result.ok) {", 1)[1].split("} else {", 1)[0]
+    assert "raised.set(id, Date.now());" in success
+    assert "for (const id of result.raised || ids) {" in success, "only what was actually raised"
+
+
+def test_the_deal_draws_what_the_terminal_really_opens(page: str) -> None:
+    """A console with no tabs opens windows; the switch and the deal both say so."""
+    assert "opens = data.layouts || {};" in page
+    assert "node.dataset.demoted = String(short);" in page
+    assert ".seg[data-demoted=true]{" in page
+    dealer = _dealer(page)
+    assert "layout: drawn(layout)," in dealer
+    assert 'word(drawn(layout) === "tabs"' in dealer
