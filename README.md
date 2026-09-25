@@ -340,7 +340,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-384 tests, no network, no real session touched. Everything runs against a synthetic config
+386 tests, no network, no real session touched. Everything runs against a synthetic config
 directory in `tmp_path`. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
 terminal backends against both layouts on all three platforms, quoting of paths with spaces and
@@ -371,12 +371,13 @@ The figure from the icon bolts the length of the masthead shedding crumbs, with 
 close enough behind to eat every one; that one runs every few hours on open, on a click of the
 wordmark, and once a revival lands. Dragging the caret back through time strikes sparks off it.
 Every row that comes back releases a soul that lifts off the register. Bring back more than five
-and the figure shuffles them instead. Their marks lift off the rows and fold into a deck of small
-terminals, which it riffles with its eyes shut, keeping time with its head and singing along, then
-deals into one window or several, whichever you picked, in the order they will open. It plays at
-half speed, because at full speed the riffle is over before you have found it. The launch goes out
-as the first card leaves the deck, 2.7 seconds after the click, so the terminals only cover the
-last of the deal, and Escape skips the whole thing and launches at once. An empty register keeps
+and the figure pops out of a puff of smoke to shuffle them instead. Their marks lift off the rows
+and fold into a deck of small terminals, which it riffles with its eyes shut, nodding along with
+its mouth in an O, then deals into one window or several, whichever you picked, in the order they
+will open, smiling. It plays at half speed, because at full speed the riffle is over before you
+have found it. The launch goes out as the first card leaves the deck, three seconds after the
+click, so the terminals only cover the last of the deal, and Escape skips the whole thing and
+launches at once. An empty register keeps
 the figure standing in it while motes drift past. The first claim types itself under a block
 cursor, and every later one lands whole, because by then you are waiting on an answer rather than
 a show. All of it stops under `prefers-reduced-motion`.
