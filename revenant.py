@@ -37,7 +37,7 @@ import revenant_terminals as terminals
 from revenant_agents import AGENTS, Agent, get_agent, installed_agents, is_meaningful
 from revenant_agents import DEFAULT_AGENT as CLAUDE_CODE
 
-__version__ = "1.4.2"
+__version__ = "1.5.0"
 APP_NAME = "Revenant"
 
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhdw])$", re.IGNORECASE)
