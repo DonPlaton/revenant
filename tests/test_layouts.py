@@ -390,3 +390,51 @@ def test_the_ui_offers_both_layouts_and_sends_the_choice() -> None:
     for layout in terminals.LAYOUTS:
         assert f'data-layout="{layout}"' in page
     assert "days: stop().days, agent, layout" in page, "the choice has to reach /api/revive"
+
+
+# --------------------------------------------------------------------------- #
+# command lines that Windows Terminal would misread
+# --------------------------------------------------------------------------- #
+def test_a_semicolon_in_a_name_or_folder_does_not_split_the_tab() -> None:
+    r"""Windows Terminal splits on every `;`, quoted or not; `\;` is a literal one."""
+    job = terminals.Job("fix; tests", r"D:\work\a;b", "claude --resume abc")
+    for layout in ("tabs", "windows"):
+        plan = terminals.WindowsTerminal().plan([job, job], layout=layout)
+        for argv in plan.commands:
+            loose = [arg for arg in argv if ";" in arg.replace("\\;", "") and arg != ";"]
+            assert not loose, f"unescaped semicolon in {loose}"
+            assert r"fix\; tests" in argv and r"D:\work\a\;b" in argv
+
+
+def test_hundreds_of_tabs_are_split_over_calls_to_one_window() -> None:
+    """One call past 32,767 characters fails with WinError 206 and falls back."""
+    jobs = [terminals.Job(f"session {i} " + "x" * 60, f"D:\\projects\\{i:04d}-" + "y" * 40,
+                          f"claude --resume {i:08d}-aaaa-bbbb-cccc-dddddddddddd") for i in range(400)]
+    plan = terminals.WindowsTerminal().plan(jobs, layout="tabs")
+    assert len(plan.commands) > 1
+    assert plan.serial, "each call has to find the window the first one made"
+    targets = {argv[argv.index("-w") + 1] for argv in plan.commands}
+    assert len(targets) == 1 and next(iter(targets)).startswith("revenant-")
+    assert sum(argv.count("new-tab") for argv in plan.commands) == len(jobs)
+    import subprocess
+    assert all(len(subprocess.list2cmdline(argv)) < 32_767 for argv in plan.commands)
+
+
+def test_a_normal_revival_is_still_one_call_to_a_new_window() -> None:
+    plan = terminals.WindowsTerminal().plan(JOBS, layout="tabs")
+    assert len(plan.commands) == 1 and not plan.serial
+    assert _is_wt(plan.commands[0], "new")
+
+
+def test_gnome_tabs_are_opened_one_after_another() -> None:
+    """Started together, the first --tab may have no window for the rest to join."""
+    assert terminals.GnomeTerminal().plan(JOBS, layout="tabs").serial
+    assert not terminals.GnomeTerminal().plan(JOBS, layout="windows").serial
+
+
+def test_a_serial_plan_waits_for_each_command(tmp_path: Path) -> None:
+    marker = tmp_path / "first-done"
+    first = [sys.executable, "-c", f"import time, pathlib; time.sleep(0.4); pathlib.Path(r'{marker}').touch()"]
+    second = [sys.executable, "-c", f"import pathlib, sys; sys.exit(0 if pathlib.Path(r'{marker}').exists() else 3)"]
+    opened, note = terminals.run(terminals.Plan("test", [first, second], serial=True))
+    assert opened == 2 and "status 3" not in note

@@ -781,3 +781,38 @@ def test_all_agents_still_honours_a_slug(root: Path, monkeypatch: pytest.MonkeyP
 def test_the_retired_no_tabs_flag_is_still_accepted(root: Path) -> None:
     """A 1.0 alias in someone's script should not become a usage error."""
     assert revenant.main(["--root", str(root), "--since", "7d", "--no-tabs"]) == 0
+
+
+
+# --------------------------------------------------------------------------- #
+# liveness read again at launch time
+# --------------------------------------------------------------------------- #
+def _bare_session(tmp_path: Path, agent=None, **extra) -> revenant.Session:
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text("{}\n", encoding="utf-8")
+    fields = {"session_id": "abc", "transcript": transcript, "project_slug": "x", **extra}
+    if agent is not None:
+        fields["agent"] = agent
+    return revenant.Session(**fields)
+
+
+def test_a_session_registered_since_the_scan_is_held_back(tmp_path: Path, monkeypatch) -> None:
+    session = _bare_session(tmp_path)
+    monkeypatch.setattr(revenant, "load_live_registry", lambda root, agent: {"abc": {"pid": 7}})
+    revenant.refresh_liveness([session], lambda agent: tmp_path)
+    assert session.is_live and session.live_pid == 7
+
+
+def test_a_transcript_written_moments_ago_counts_as_live(tmp_path: Path, monkeypatch) -> None:
+    session = _bare_session(tmp_path, agent=agents.Codex())
+    monkeypatch.setattr(revenant, "load_live_registry", lambda root, agent: {})
+    revenant.refresh_liveness([session], lambda agent: tmp_path)
+    assert session.live_reason == "active moments ago"
+
+
+def test_refreshing_liveness_never_clears_a_hold(tmp_path: Path, monkeypatch) -> None:
+    """A wrong hold costs a delay; a wrong launch corrupts a transcript."""
+    session = _bare_session(tmp_path, live_reason="process 9")
+    monkeypatch.setattr(revenant, "load_live_registry", lambda root, agent: {})
+    revenant.refresh_liveness([session], lambda agent: tmp_path)
+    assert session.is_live

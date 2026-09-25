@@ -366,6 +366,36 @@ def load_live_registry(root: Path, *, agent: Agent = CLAUDE_CODE) -> dict[str, d
     return live
 
 
+def refresh_liveness(sessions: Sequence[Session], root_for) -> None:
+    """Re-read which of these sessions are running, just before a launch.
+
+    A list can be seconds old by the time its REVIVE is pressed, and a session
+    resumed by hand in the meantime would otherwise be opened a second time on
+    the same transcript. Only ever marks sessions live, never clears them: the
+    cost of a wrong hold is a delay, the cost of a wrong launch is a corrupted
+    transcript.
+    """
+    now = datetime.now(timezone.utc)
+    registries: dict[str, dict[str, dict]] = {}
+    for session in sessions:
+        agent = session.agent
+        if agent.key not in registries:
+            registries[agent.key] = load_live_registry(root_for(agent), agent=agent)
+        record = registries[agent.key].get(session.session_id)
+        if record:
+            session.live_pid = record.get("pid")
+            session.live_name = record.get("name")
+            session.live_status = record.get("status")
+            session.live_reason = f"process {record.get('pid')}"
+            continue
+        try:
+            mtime = datetime.fromtimestamp(session.transcript.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            continue
+        if agent.live_window and (now - mtime).total_seconds() < agent.live_window:
+            session.live_reason = "active moments ago"
+
+
 def scan_sessions(
     root: Path,
     *,

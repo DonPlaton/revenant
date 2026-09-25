@@ -291,3 +291,96 @@ def test_a_different_window_bypasses_the_cache(served, monkeypatch: pytest.Monke
 
 def test_the_ui_file_is_findable(tmp_path: Path) -> None:
     assert (gui.UI_DIR / "index.html").is_file(), "run_gui refuses to start without it"
+
+
+# --------------------------------------------------------------------------- #
+# a revival's loose ends
+# --------------------------------------------------------------------------- #
+ALPHA = "11111111-1111-1111-1111-111111111111"
+
+
+@pytest.fixture
+def no_launch(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Stand in for the launcher: record what would open, open nothing."""
+    calls: list = []
+
+    def fake(sessions, **kwargs):
+        calls.append([s.session_id for s in sessions])
+        return 0
+
+    monkeypatch.setattr(revenant, "launch", fake)
+    return calls
+
+
+def test_nan_and_infinite_days_fall_back(served) -> None:
+    """NaN slips through min and max and then fails inside timedelta."""
+    assert gui._as_float("nan", 3.0) == 3.0
+    assert gui._as_float("inf", 3.0) == 3.0
+    backend, base = served
+    status, body = _get(f"{base}/api/sessions?days=nan&t={backend.token}")
+    assert status == 200 and json.loads(body)["error"] is None
+
+
+def test_a_body_that_is_not_an_object_gets_an_answer(served, no_launch) -> None:
+    backend, base = served
+    request = urllib.request.Request(
+        f"{base}/api/revive?t={backend.token}", data=b"[1, 2, 3]",
+        headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    assert payload["ok"] is False and no_launch == []
+    status, body = _post(f"{base}/api/revive?t={backend.token}", {"ids": "not-a-list", "days": 7})
+    assert status == 200 and json.loads(body)["ok"] is False
+
+
+def test_a_route_that_throws_still_answers(served, monkeypatch: pytest.MonkeyPatch) -> None:
+    backend, base = served
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("disk on fire")
+
+    monkeypatch.setattr(backend, "sessions", broken)
+    status, body = _get(f"{base}/api/sessions?days=7&t={backend.token}")
+    assert status == 200
+    assert "disk on fire" in json.loads(body)["error"]
+
+
+def test_revive_reports_exactly_which_sessions_it_raised(served, no_launch) -> None:
+    backend, base = served
+    status, body = _post(f"{base}/api/revive?t={backend.token}", {"ids": [ALPHA], "days": 7})
+    payload = json.loads(body)
+    assert payload["ok"] is True
+    assert payload["raised"] == [ALPHA] and payload["count"] == 1
+    assert no_launch == [[ALPHA]]
+
+
+def test_a_session_resumed_since_the_list_loaded_is_held_back(served, no_launch, monkeypatch) -> None:
+    """The list can be seconds old; liveness is read again at launch time."""
+    backend, base = served
+    _get(f"{base}/api/sessions?days=7&t={backend.token}")  # warm the cache while it is dead
+    monkeypatch.setattr(revenant, "load_live_registry", lambda root, agent: {ALPHA: {"pid": 4242}})
+    status, body = _post(f"{base}/api/revive?t={backend.token}", {"ids": [ALPHA], "days": 7})
+    payload = json.loads(body)
+    assert payload["ok"] is False and payload["raised"] == []
+    assert "still running" in payload["message"]
+    assert no_launch == []
+
+
+def test_more_than_the_cap_says_what_was_left(served, no_launch) -> None:
+    backend, base = served
+    ids = [ALPHA] + [f"missing-{i}" for i in range(gui.MAX_IDS + 5)]
+    status, body = _post(f"{base}/api/revive?t={backend.token}", {"ids": ids, "days": 7})
+    payload = json.loads(body)
+    assert f"Only the first {gui.MAX_IDS} were sent" in payload["message"]
+    assert payload["raised"] == [ALPHA]
+
+
+def test_the_page_learns_what_each_layout_really_opens(served) -> None:
+    backend, base = served
+    status, body = _get(f"{base}/api/sessions?days=7&t={backend.token}")
+    layouts = json.loads(body)["layouts"]
+    assert set(layouts) == {"tabs", "windows"}
+    for wanted, info in layouts.items():
+        assert info["opens"] in {"tabs", "windows"}
+        assert info["terminal"]
+        assert (info["note"] == "") == (info["opens"] == wanted)

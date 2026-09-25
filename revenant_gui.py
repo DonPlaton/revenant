@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import os
 import secrets
 import shutil
@@ -51,6 +52,9 @@ def _ui_dir() -> Path:
 
 UI_DIR = _ui_dir()
 MAX_BODY_BYTES = 256 * 1024
+#: Sessions one request may name. More than this is almost certainly a mistake,
+#: and the page says which ones were left behind.
+MAX_IDS = 200
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -77,6 +81,7 @@ class Backend:
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._cache: tuple[tuple[float, str], float, list[revenant.Session]] | None = None
+        self._layouts: dict | None = None
         self.last_seen = time.monotonic()
 
     # -- data ------------------------------------------------------------- #
@@ -121,6 +126,24 @@ class Backend:
         with self._lock:
             self._cache = None
 
+    def layouts(self) -> dict:
+        """What each layout choice really opens here, by the rule a launch uses.
+
+        The page draws the deal from this and marks a choice the terminal cannot
+        make, instead of promising tabs a console will open as windows.
+        """
+        if self._layouts is None:
+            found = {}
+            for wanted in terminals.LAYOUTS:
+                terminal = terminals.choose(layout=wanted)
+                found[wanted] = {
+                    "terminal": terminal.label,
+                    "opens": terminal.settle(wanted),
+                    "note": terminal.demoted(wanted),
+                }
+            self._layouts = found
+        return self._layouts
+
     def sessions(self, *, days: float, which: str = "", include_live: bool = True) -> dict:
         which = which or self.agent.key
         choices = self.choices()
@@ -133,6 +156,7 @@ class Backend:
                 "sessions": [],
                 "agents": choices,
                 "agent": which,
+                "layouts": self.layouts(),
             }
 
         found = self._scan(days, which)
@@ -153,6 +177,7 @@ class Backend:
             "agent": which,
             "root": where,
             "error": None,
+            "layouts": self.layouts(),
         }
 
     def _by_id(self, ids: list[str], *, days: float, which: str = "") -> list[revenant.Session]:
@@ -168,16 +193,21 @@ class Backend:
     ) -> dict:
         chosen = self._by_id(ids, days=days, which=which)
         if not chosen:
-            return {"ok": False, "message": "Those sessions are no longer on disk.", "count": 0}
+            return {"ok": False, "message": "Those sessions are no longer on disk.", "count": 0, "raised": []}
 
+        revenant.refresh_liveness(chosen, self._root_for)
         running = [s for s in chosen if s.is_live]
         chosen = [s for s in chosen if not s.is_live]
         if not chosen:
             return {
                 "ok": False,
                 "count": 0,
+                "raised": [],
                 "message": "Every session you picked is still running, so there is nothing to bring back.",
             }
+        # A session with no folder on record cannot be opened anywhere, and the
+        # launch drops it, so it is not counted as raised either.
+        placed = [s for s in chosen if s.cwd]
 
         sink = io.StringIO()
         # An unknown layout is the UI being out of step with the backend, which is
@@ -189,7 +219,16 @@ class Backend:
         message = " ".join(note[-2:]) if note else ""
         if running:
             message += f" {len(running)} held back."
-        return {"ok": code == 0, "count": len(chosen) if code == 0 else 0, "message": message.strip()}
+        if len(placed) < len(chosen):
+            message += f" {len(chosen) - len(placed)} had no folder on record."
+        raised = [s.session_id for s in placed] if code == 0 else []
+        return {"ok": code == 0, "count": len(raised), "raised": raised, "message": message.strip()}
+
+    def _root_for(self, agent: Agent) -> Path:
+        """Where an agent's files are read from, by the same rule as a scan."""
+        if self.explicit_root or agent.key == self.agent.key:
+            return self.root
+        return agent.config_dir()
 
     def commands(self, ids: list[str], *, days: float, which: str = "") -> dict:
         chosen = self._by_id(ids, days=days, which=which)
@@ -279,6 +318,19 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _guarded(self, work) -> dict:
+        """Run a route, turning a failure into an answer the page can show.
+
+        An exception that escapes a handler closes the socket without a word, and
+        the page can only say the service stopped answering.
+        """
+        try:
+            return work()
+        except Exception as exc:  # noqa: BLE001 - any failure is reported, none is fatal
+            message = f"Something went wrong in the local service: {type(exc).__name__}: {exc}"
+            return {"ok": False, "count": 0, "raised": [], "message": message,
+                    "error": message, "sessions": [], "text": ""}
+
     def _json(self, payload: dict, status: int = 200) -> None:
         self._send(status, json.dumps(payload, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
@@ -327,7 +379,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/sessions":
             days = _as_float(query.get("days", ["7"])[0], 7.0)
             which = (query.get("agent") or [""])[0][:40]
-            self._json(self.backend.sessions(days=days, which=which))
+            self._json(self._guarded(lambda: self.backend.sessions(days=days, which=which)))
             return
         if parsed.path == "/api/ping":
             self._json({"ok": True})
@@ -346,15 +398,25 @@ class Handler(BaseHTTPRequestHandler):
 
         self.backend.touch()
         payload = self._read_json()
-        ids = [str(i) for i in payload.get("ids", [])][:200]
+        # A body that is not an object, or ids that are not a list, is a caller
+        # out of step with this service; it gets an answer, not a dropped socket.
+        if not isinstance(payload, dict):
+            payload = {}
+        offered = payload.get("ids")
+        every = [str(i) for i in offered] if isinstance(offered, list) else []
+        ids = every[:MAX_IDS]
         days = _as_float(payload.get("days", 7), 7.0)
         which = str(payload.get("agent", ""))[:40]
 
         if parsed.path == "/api/revive":
             layout = str(payload.get("layout", ""))[:16]
-            self._json(self.backend.revive(ids, days=days, which=which, layout=layout))
+            result = self._guarded(lambda: self.backend.revive(ids, days=days, which=which, layout=layout))
+            if len(every) > MAX_IDS:
+                result["message"] = (f"{result.get('message', '')} Only the first {MAX_IDS} were sent; "
+                                     "the rest are still marked.").strip()
+            self._json(result)
         elif parsed.path == "/api/commands":
-            self._json(self.backend.commands(ids, days=days, which=which))
+            self._json(self._guarded(lambda: self.backend.commands(ids, days=days, which=which)))
         elif parsed.path == "/api/reveal":
             self._json(self.backend.reveal(str(payload.get("path", ""))))
         elif parsed.path == "/api/quit":
@@ -378,6 +440,9 @@ def _as_float(value: object, fallback: float) -> float:
     try:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
+        return fallback
+    # NaN slips through min and max unchanged and then fails inside timedelta.
+    if not math.isfinite(number):
         return fallback
     return min(max(number, 0.04), 3650.0)
 

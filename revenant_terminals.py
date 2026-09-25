@@ -9,6 +9,7 @@ platforms even though only one of them can be exercised for real at a time.
 from __future__ import annotations
 
 import os
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -20,6 +21,9 @@ from pathlib import Path
 #: How long a spawned terminal gets to fail before it counts as opened. Long
 #: enough to catch an immediate exit, short enough not to be felt.
 EARLY_EXIT_GRACE = 1.0
+#: How much of Windows' 32,767-character command line one wt.exe call may use,
+#: leaving room for the binary's own path and the window argument.
+WT_COMMAND_LINE = 30_000
 
 WINDOWS = os.name == "nt"
 MACOS = sys.platform == "darwin"
@@ -58,6 +62,9 @@ class Plan:
     #: Commands that set the stage rather than open a window, so counting them
     #: would report more terminals than the user can see.
     overhead: frozenset[int] = frozenset()
+    #: Commands that must run one after another: each needs what the one before
+    #: it opened, like a tab that goes into the window the last call made.
+    serial: bool = False
     #: What this plan actually does, which is not always what was asked for: a
     #: backend that cannot script tabs reports `windows` here and says so in the
     #: note, so the caller never claims to have opened tabs that do not exist.
@@ -197,10 +204,14 @@ class WindowsTerminal(Terminal):
         binary = windows_terminal_binary() or "wt.exe"
 
         def tab(job: Job) -> list[str]:
-            argv = ["new-tab", "--title", job.label, "-d", job.cwd]
+            # Windows Terminal splits its command line on every `;`, quoted or
+            # not, so a folder or a session name with one in it would cut the tab
+            # in two. `\;` is its escape for a literal one.
+            text = lambda value: value.replace(";", "\\;")  # noqa: E731
+            argv = ["new-tab", "--title", text(job.label), "-d", text(job.cwd)]
             if profile:
                 argv += ["-p", profile]
-            return argv + [shell, "-NoExit", "-Command", job.command]
+            return argv + [shell, "-NoExit", "-Command", text(job.command)]
 
         if self.settle(layout) == LAYOUT_WINDOWS:
             # `-w new` is what makes each call a window of its own, so it overrides
@@ -212,12 +223,31 @@ class WindowsTerminal(Terminal):
                 layout=LAYOUT_WINDOWS,
             )
 
-        argv: list[str] = [binary, "-w", window]
-        for index, job in enumerate(jobs):
-            if index:
-                argv.append(";")
-            argv += tab(job)
-        return Plan(self.key, [argv], layout=LAYOUT_TABS)
+        # A Windows command line holds 32,767 characters, which a couple of
+        # hundred tabs pass. Past that the tabs go in several calls to one named
+        # window, run in turn so each finds the window the first one made.
+        groups: list[list[list[str]]] = [[]]
+        size = 0
+        for job in jobs:
+            piece = tab(job)
+            cost = len(subprocess.list2cmdline(piece)) + 3
+            if groups[-1] and size + cost > WT_COMMAND_LINE:
+                groups.append([])
+                size = 0
+            groups[-1].append(piece)
+            size += cost
+        target = window
+        if len(groups) > 1 and window == "new":
+            target = f"revenant-{secrets.token_hex(4)}"
+        commands = []
+        for group in groups:
+            argv: list[str] = [binary, "-w", target]
+            for index, piece in enumerate(group):
+                if index:
+                    argv.append(";")
+                argv += piece
+            commands.append(argv)
+        return Plan(self.key, commands, layout=LAYOUT_TABS, serial=len(commands) > 1)
 
 
 class WindowsConsole(Terminal):
@@ -341,6 +371,8 @@ class GnomeTerminal(Terminal):
         """
         chosen = self.settle(layout)
         where = "--tab" if chosen == LAYOUT_TABS else "--window"
+        # Started all at once, the first --tab may not have a window to join yet
+        # when the others arrive, and they scatter over several.
         return Plan(
             self.key,
             [
@@ -357,6 +389,7 @@ class GnomeTerminal(Terminal):
                 for job in jobs
             ],
             layout=chosen,
+            serial=chosen == LAYOUT_TABS,
         )
 
 
@@ -695,9 +728,13 @@ def run(plan: Plan) -> tuple[int, str]:
                 if index not in plan.overhead:
                     opened += 1
             else:
-                started.append(
-                    subprocess.Popen(argv, cwd=cwd, close_fds=True, creationflags=creation)
-                )
+                process = subprocess.Popen(argv, cwd=cwd, close_fds=True, creationflags=creation)
+                started.append(process)
+                if plan.serial:
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        pass  # still running is fine; the next one just goes
         except (OSError, subprocess.SubprocessError) as exc:
             if index not in plan.optional:
                 failures.append(str(exc))
