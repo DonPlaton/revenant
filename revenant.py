@@ -28,7 +28,7 @@ import subprocess
 import secrets
 import sys
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Sequence
@@ -959,13 +959,18 @@ def plan_launch(
     layout: str | None = None,
     window: str = "new",
     profile: str | None = None,
+    place: terminals.Spot | None = None,
 ) -> tuple[terminals.Terminal, terminals.Plan]:
-    """Choose a terminal and build the commands, without running anything."""
+    """Choose a terminal and build the commands, without running anything.
+
+    `place` says where a tabbed revival's window goes, for a terminal that can
+    be told; the rest ignore it.
+    """
     chosen = terminals.choose(terminal, layout=layout)
     jobs = [session.job() for session in sessions if session.cwd]
     # Options a backend does not use are ignored by its own signature, so every
     # backend, including one we fall back to, is offered all of them.
-    return chosen, chosen.plan(jobs, layout=layout, window=window, profile=profile)
+    return chosen, chosen.plan(jobs, layout=layout, window=window, profile=profile, place=place)
 
 
 def launch(
@@ -978,11 +983,18 @@ def launch(
     dry_run: bool = False,
     stream=None,
     landed: list | None = None,
+    place: terminals.Spot | None = None,
+    start_in: float = 0.0,
+    stagger: float = 0.0,
 ) -> int:
     """Open the selected sessions in a terminal.
 
     `landed`, when given, is filled with the sessions whose terminal came up, so
-    a caller can tell them from the ones that failed or were held back.
+    a caller can tell them from the ones that failed or were held back. `place`
+    puts the window where the caller drew it, `start_in` holds the launch back
+    so it comes up as the cards land, and `stagger` spaces the calls after the
+    first. A fallback terminal gets none of it: it is late already, and was
+    never drawn.
     """
     stream = stream if stream is not None else sys.stdout
     # One session named twice would be opened twice on the same transcript.
@@ -1008,8 +1020,10 @@ def launch(
         print(file=stream)
 
     chosen, plan = plan_launch(
-        usable, terminal=terminal, layout=layout, window=window, profile=profile
+        usable, terminal=terminal, layout=layout, window=window, profile=profile, place=place
     )
+    if start_in > 0 or stagger > 0:
+        plan = replace(plan, delays=tuple(start_in + index * stagger for index in range(len(plan.commands))))
     if dry_run:
         print(plan.render(), file=stream)
         return 0

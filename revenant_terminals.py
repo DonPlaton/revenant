@@ -8,6 +8,8 @@ platforms even though only one of them can be exercised for real at a time.
 
 from __future__ import annotations
 
+import json
+import math
 import os
 import secrets
 import shlex
@@ -75,6 +77,9 @@ class Plan:
     #: How many jobs each command opens, in order, when that is neither one per
     #: command nor all in one. Commands in `overhead` open none.
     carries: tuple[int, ...] = ()
+    #: Seconds after the run starts before each command may go, so windows can
+    #: come up on a schedule: as the cards that stand for them land.
+    delays: tuple[float, ...] = ()
     #: What this plan actually does, which is not always what was asked for: a
     #: backend that cannot script tabs reports `windows` here and says so in the
     #: note, so the caller never claims to have opened tabs that do not exist.
@@ -174,6 +179,229 @@ def windows_terminal_binary() -> str | None:
     return shutil.which("wt.exe") or shutil.which("wt")
 
 
+# --------------------------------------------------------------------------- #
+# Placing windows where the deal put them
+# --------------------------------------------------------------------------- #
+
+#: The fewest columns and rows worth placing a window at. An agent's interface
+#: wraps badly under 80 columns, and a window cut shorter than this is worse
+#: than one wherever the terminal would have put it.
+PLACE_MIN = (80, 20)
+
+
+@dataclass(frozen=True)
+class Cells:
+    """How a Windows Terminal window's visible size follows from its columns and
+    rows, in physical pixels at one display scale."""
+
+    width: float
+    height: float
+    #: Padding, scrollbar and border beside the cells.
+    chrome_w: float
+    #: Tab row, padding and border above and below them.
+    chrome_h: float
+    #: The tab row alone, where the cards land.
+    strip: float
+    #: What a window opens with when no size is asked for.
+    cols: int = 120
+    rows: int = 30
+
+    def size(self, cols: int, rows: int) -> tuple[int, int]:
+        return round(cols * self.width + self.chrome_w), round(rows * self.height + self.chrome_h)
+
+    def fit(self, width: float, height: float) -> tuple[int, int]:
+        """The most columns and rows that stay inside `width` x `height`."""
+        return int((width - self.chrome_w) // self.width), int((height - self.chrome_h) // self.height)
+
+
+@dataclass(frozen=True)
+class Spot:
+    """Where one window goes, in physical screen pixels: the visible top-left
+    corner that `--pos` sets, the `--size` asked for, and the visible size that
+    comes out as far as the font lets it be predicted."""
+
+    x: int
+    y: int
+    cols: int
+    rows: int
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
+class Room:
+    """The part of the screen the deal may put a window in, in physical pixels.
+
+    `left` is where the window may start, clear of the figure. Its tab strip goes
+    between `top` and `bottom`, where the cards can still be seen landing; the
+    window itself may hang below that, but never past the work area in `screen`
+    (left, top, right, bottom).
+    """
+
+    screen: tuple[int, int, int, int]
+    left: int
+    top: int
+    bottom: int
+
+
+def _jsonc(text: str):
+    """Parse the JSON with comments and trailing commas that Windows Terminal
+    writes and the json module refuses."""
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = n if end < 0 else end
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+        elif c == ",":
+            # A comma with nothing after it but a closing bracket is dropped.
+            j = i + 1
+            while j < n and text[j] in " \t\r\n":
+                j += 1
+            if not (j < n and text[j] in "}]"):
+                out.append(c)
+            i += 1
+        else:
+            out.append(c)
+            i += 1
+    return json.loads("".join(out))
+
+
+def wt_settings() -> dict | None:
+    """Windows Terminal's settings, from the package that `wt.exe` belongs to."""
+    local = os.environ.get("LOCALAPPDATA")
+    if not WINDOWS or not local:
+        return None
+    binary = windows_terminal_binary() or ""
+    packages = sorted(WT_PACKAGES, key=lambda package: package not in binary)
+    candidates = [Path(local) / "Packages" / package / "LocalState" / "settings.json" for package in packages]
+    candidates.append(Path(local) / "Microsoft" / "Windows Terminal" / "settings.json")
+    for path in candidates:
+        try:
+            data = _jsonc(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
+def _padding(value: object) -> tuple[float, float, float, float]:
+    """Windows Terminal's padding: one number, two (sides, ends) or four."""
+    try:
+        parts = [float(p) for p in str(value).split(",")]
+    except ValueError:
+        parts = [8.0]
+    if len(parts) == 1:
+        parts *= 4
+    elif len(parts) == 2:
+        parts = [parts[0], parts[1], parts[0], parts[1]]
+    elif len(parts) != 4:
+        parts = [8.0] * 4
+    return parts[0], parts[1], parts[2], parts[3]
+
+
+def wt_cells(settings: dict | None, scale: float) -> Cells | None:
+    """How big a Windows Terminal window comes out at `scale`, or None.
+
+    None when the user has said where windows go (a launch mode, a position,
+    centring) or set something the estimate cannot follow. The cell is worked
+    out from the font size the way Cascadia Mono measures, rounded up, so a
+    window never comes out larger than the room it was given.
+    """
+    if not isinstance(settings, dict) or not 0.5 <= scale <= 4:
+        return None
+    if str(settings.get("launchMode", "default")) not in ("default", "focus"):
+        return None
+    if settings.get("initialPosition") or settings.get("centerOnLaunch"):
+        return None
+    if settings.get("showTabsInTitlebar", True) is False:
+        return None
+    profiles = settings.get("profiles")
+    defaults: dict = {}
+    listed: list = []
+    if isinstance(profiles, dict):
+        defaults = profiles.get("defaults") if isinstance(profiles.get("defaults"), dict) else {}
+        listed = profiles.get("list") if isinstance(profiles.get("list"), list) else []
+    elif isinstance(profiles, list):
+        listed = profiles
+    wanted = str(settings.get("defaultProfile", "")).lower()
+    chosen = next((p for p in listed if isinstance(p, dict) and str(p.get("guid", "")).lower() == wanted), {})
+
+    size = None
+    for source in (chosen, defaults):
+        font = source.get("font") if isinstance(source.get("font"), dict) else {}
+        if "cellWidth" in font or "cellHeight" in font:
+            return None
+        if size is None:
+            size = font.get("size", source.get("fontSize"))
+    try:
+        points = float(size) if size is not None else 12.0
+    except (TypeError, ValueError):
+        return None
+    if not 4 <= points <= 72:
+        return None
+
+    def pick(key: str, fallback):
+        for source in (chosen, defaults):
+            if key in source:
+                return source[key]
+        return fallback
+
+    left, top, right, bottom = _padding(pick("padding", "8"))
+    scrollbar = 0.0 if str(pick("scrollbarState", "visible")) == "hidden" else 16.0
+    pixels = points * 96 / 72 * scale
+    try:
+        cols = int(settings.get("initialCols", 120))
+        rows = int(settings.get("initialRows", 30))
+    except (TypeError, ValueError):
+        cols, rows = 120, 30
+    return Cells(
+        # Rounded up, but not past a whole pixel by a float's last digit.
+        width=math.ceil(0.6 * pixels - 1e-6),
+        height=1.15 * pixels,
+        chrome_w=(left + right + scrollbar + 2) * scale,
+        chrome_h=(top + bottom + 46) * scale,
+        strip=36 * scale,
+        cols=max(PLACE_MIN[0], cols),
+        rows=max(PLACE_MIN[1], rows),
+    )
+
+
+def place(room: Room, cells: Cells, *, margin: int = 12) -> Spot | None:
+    """Where the one window of a tabbed revival goes, or None when it does not fit.
+
+    It starts at `room.left` with its tab strip at the top of the band, and gets
+    the columns and rows that keep it inside the work area, capped at what the
+    user opens by default. Nothing is placed below `PLACE_MIN`.
+
+    Only the tabbed window is placed. Filmed on a 1080p screen, windows of their
+    own fit three to a cascade beside the figure, so ten of them landed in three
+    piles with seven hidden, and Windows Terminal brought them up in a burst and
+    out of order; where it cascades them itself, every one stays in view.
+    """
+    s_left, s_top, s_right, s_bottom = room.screen
+    x, y = max(room.left, s_left + margin), max(room.top, s_top + margin)
+    if y > room.bottom:
+        return None
+    cols, rows = cells.fit(s_right - margin - x, s_bottom - margin - y)
+    cols, rows = min(cols, cells.cols), min(rows, cells.rows)
+    if cols < PLACE_MIN[0] or rows < PLACE_MIN[1]:
+        return None
+    width, height = cells.size(cols, rows)
+    return Spot(round(x), round(y), cols, rows, width, height)
+
+
 #: How a backend describes what it did when it could not do what was asked.
 _INSTEAD = {
     LAYOUT_WINDOWS: "opened one window per session",
@@ -241,6 +469,7 @@ class WindowsTerminal(Terminal):
         layout: str | None = None,
         window: str = "new",
         profile: str | None = None,
+        place: Spot | None = None,
         **_,
     ) -> Plan:
         shell = _powershell()
@@ -272,9 +501,11 @@ class WindowsTerminal(Terminal):
         target = window
         if len(groups) > 1 and window == "new":
             target = f"revenant-{secrets.token_hex(4)}"
+        # Only the call that makes the window can say where it goes.
+        at = ["--pos", f"{place.x},{place.y}", "--size", f"{place.cols},{place.rows}"] if place else []
         commands = []
-        for group in groups:
-            argv: list[str] = [binary, "-w", target]
+        for number, group in enumerate(groups):
+            argv: list[str] = [binary, "-w", target, *(at if number == 0 else [])]
             for index, job in enumerate(group):
                 if index:
                     argv.append(";")
@@ -779,8 +1010,13 @@ def outcome(plan: Plan) -> Outcome:
     landed = [False] * len(plan.commands)
     failures: list[str] = []
     started: list[tuple[int, subprocess.Popen]] = []
+    begun = time.monotonic()
     for index, argv in enumerate(plan.commands):
         cwd = plan.directory(index) or None
+        if index < len(plan.delays):
+            wait = begun + plan.delays[index] - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
         try:
             if plan.terminal == "tmux":
                 subprocess.run(argv, check=True, capture_output=True, timeout=30)

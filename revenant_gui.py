@@ -55,6 +55,14 @@ MAX_BODY_BYTES = 256 * 1024
 #: Sessions one request may name. More than this is almost certainly a mistake,
 #: and the page says which ones were left behind.
 MAX_IDS = 200
+#: The longest a revival may be held back to meet its cards, and the widest gap
+#: between two of its windows. More is cut to these.
+MAX_WAIT_MS = 5000.0
+MAX_STAGGER_MS = 400.0
+#: How long after the call a terminal's window shows, so the page can start the
+#: launch this much before the cards land. Windows Terminal was filmed at about
+#: 330 ms from the call to its first frame; the rest are a guess on the late side.
+LEAD_MS = {"wt": 250, "tmux": 0, "": 400}
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -140,6 +148,9 @@ class Backend:
                     "terminal": terminal.label,
                     "opens": terminal.settle(wanted),
                     "note": terminal.demoted(wanted),
+                    # How long its windows take to show after the call, so the
+                    # page can ask for them to arrive as the cards land.
+                    "lead": LEAD_MS.get(terminal.key, LEAD_MS[""]),
                 }
             self._layouts = found
         return self._layouts
@@ -186,11 +197,69 @@ class Backend:
         by_id = {s.session_id: s for s in self._scan(days, which or self.agent.key)}
         return [by_id[i] for i in dict.fromkeys(ids) if i in by_id]
 
+    # -- placing -------------------------------------------------------- #
+
+    def _spot(self, layout: str, room: object) -> tuple[terminals.Spot, terminals.Cells, float] | None:
+        """Where the page asked for a tabbed revival's window, in screen pixels,
+        or None when the terminal cannot be told or the window would not fit.
+
+        `room` is in the page's own units, which are screen pixels divided by
+        `scale`: the work area as left, top, right, bottom, where the window may
+        start, and the band its tab strip has to fall in.
+        """
+        if not isinstance(room, dict) or layout != terminals.LAYOUT_TABS:
+            return None
+        try:
+            scale = float(room["scale"])
+            screen = [float(value) for value in room["screen"]]
+            left, top, bottom = float(room["left"]), float(room["top"]), float(room["bottom"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if len(screen) != 4 or not all(math.isfinite(value) for value in (scale, left, top, bottom, *screen)):
+            return None
+        terminal = terminals.choose(layout=layout)
+        if terminal.key != "wt" or terminal.settle(layout) != layout:
+            return None
+        cells = terminals.wt_cells(terminals.wt_settings(), scale)
+        if cells is None:
+            return None
+
+        def px(value: float) -> int:
+            return round(value * scale)
+
+        spot = terminals.place(terminals.Room(tuple(px(v) for v in screen), px(left), px(top), px(bottom)), cells)
+        return (spot, cells, scale) if spot else None
+
+    def place(self, layout: str, room: object) -> dict:
+        """Where the window of a tabbed revival will come up, in the page's units,
+        so the deal can throw each card into the tab it will become."""
+        found = self._spot(layout, room)
+        if not found:
+            return {"spots": []}
+        spot, cells, scale = found
+        return {
+            "spots": [{"x": spot.x / scale, "y": spot.y / scale,
+                       "width": spot.width / scale, "height": spot.height / scale}],
+            "strip": cells.strip / scale,
+        }
+
     # -- actions ---------------------------------------------------------- #
 
     def revive(
-        self, ids: list[str], *, days: float, which: str = "", layout: str = ""
+        self,
+        ids: list[str],
+        *,
+        days: float,
+        which: str = "",
+        layout: str = "",
+        room: object = None,
+        wait_ms: float = 0.0,
+        stagger_ms: float = 0.0,
     ) -> dict:
+        """Launch the sessions. With a `room` a tabbed revival's window goes where
+        the page drew it. `wait_ms` from now the first is started, so it comes
+        up as the cards land, and `stagger_ms` spaces the rest."""
+        arrived = time.monotonic()
         chosen = self._by_id(ids, days=days, which=which)
         if not chosen:
             return {"ok": False, "message": "Those sessions are no longer on disk.", "count": 0, "raised": []}
@@ -214,7 +283,11 @@ class Backend:
         # no reason to refuse the rescue: fall back to the default and open them.
         wanted = layout if layout in terminals.LAYOUTS else terminals.DEFAULT_LAYOUT
         came_up: list[revenant.Session] = []
-        code = revenant.launch(chosen, layout=wanted, stream=sink, landed=came_up)
+        found = self._spot(wanted, room) if room else None
+        start_in = max(0.0, arrived + min(max(wait_ms, 0.0), MAX_WAIT_MS) / 1000 - time.monotonic())
+        code = revenant.launch(chosen, layout=wanted, stream=sink, landed=came_up,
+                               place=found[0] if found else None, start_in=start_in,
+                               stagger=min(max(stagger_ms, 0.0), MAX_STAGGER_MS) / 1000)
         self.invalidate()  # a revived session becomes live as soon as it registers
         note = [line for line in sink.getvalue().strip().splitlines() if line]
         message = " ".join(note[-2:]) if note else ""
@@ -424,9 +497,15 @@ class Handler(BaseHTTPRequestHandler):
         days = _as_float(payload.get("days", 7), 7.0)
         which = str(payload.get("agent", ""))[:40]
 
+        layout = str(payload.get("layout", ""))[:16]
         if parsed.path == "/api/revive":
-            layout = str(payload.get("layout", ""))[:16]
-            result = self._guarded(lambda: self.backend.revive(ids, days=days, which=which, layout=layout))
+            # Where and when are the page's wish, never a condition: a room or a
+            # timing that does not read is ignored and the sessions still open.
+            result = self._guarded(lambda: self.backend.revive(
+                ids, days=days, which=which, layout=layout, room=payload.get("room"),
+                wait_ms=_as_float(payload.get("wait"), 0.0, low=0.0, high=MAX_WAIT_MS),
+                stagger_ms=_as_float(payload.get("stagger"), 0.0, low=0.0, high=MAX_STAGGER_MS),
+            ))
             if len(every) > MAX_IDS:
                 result["message"] = (f"{result.get('message', '')} Only the first {MAX_IDS} were sent; "
                                      "the rest are still marked.").strip()
@@ -434,6 +513,10 @@ class Handler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/commands":
             result = self._guarded(lambda: self.backend.commands(ids, days=days, which=which))
             result["dropped"] = len(every) - len(ids)
+            self._json(result)
+        elif parsed.path == "/api/place":
+            result = self._guarded(lambda: self.backend.place(layout, payload.get("room")))
+            result.setdefault("spots", [])
             self._json(result)
         elif parsed.path == "/api/reveal":
             self._json(self.backend.reveal(str(payload.get("path", ""))))
@@ -454,7 +537,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, body, _CONTENT_TYPES.get(resolved.suffix.lower(), "application/octet-stream"))
 
 
-def _as_float(value: object, fallback: float) -> float:
+def _as_float(value: object, fallback: float, *, low: float = 0.04, high: float = 3650.0) -> float:
     try:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
@@ -462,7 +545,7 @@ def _as_float(value: object, fallback: float) -> float:
     # NaN slips through min and max unchanged and then fails inside timedelta.
     if not math.isfinite(number):
         return fallback
-    return min(max(number, 0.04), 3650.0)
+    return min(max(number, low), high)
 
 
 def serve(backend: Backend) -> tuple[ThreadingHTTPServer, str]:
