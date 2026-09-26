@@ -340,7 +340,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-421 tests, no network, no real session touched, no terminal opened. Everything runs against a
+425 tests, no network, no real session touched, no terminal opened. Everything runs against a
 synthetic config directory in `tmp_path`, and a test that tries to start anything but Python or
 node fails. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
@@ -372,7 +372,8 @@ The figure from the icon bolts the length of the masthead shedding crumbs, with 
 close enough behind to eat every one; that one runs every few hours on open, on a click of the
 wordmark, and once a revival lands. Dragging the caret back through time strikes sparks off it.
 Every row that comes back releases a soul that lifts off the register. Bring back more than five
-and the figure pops out of a puff of smoke to shuffle them instead. Their marks lift off the rows
+and the figure rises out of the floor through grave mist to shuffle them instead, asleep until it
+clears the mist, and the mist stays on the ground under it. Their marks lift off the rows
 and fold into a deck of small terminals, which it riffles with its eyes shut, nodding along with
 its mouth in an O, then deals into one window or several, whichever you picked, in the order they
 will open, smiling. In Windows Terminal the window of tabs is drawn where it will really open,

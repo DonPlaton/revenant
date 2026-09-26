@@ -254,7 +254,7 @@ def test_a_dealt_revival_launches_as_the_cards_land(page: str) -> None:
     launch is timed for the last card's landing instead: the request goes out a
     little early and carries the rest of the wait for the service to keep."""
     engine = _shuffle_engine(page)
-    assert "launch: 1480" in engine
+    assert "launch: 1680" in engine
     assert "const LANDED = T.launch + DEAL * (SHOWN - 1) + FLIGHT;" in engine
     assert "const firstAt = LANDED * PACE - LEAD;" in engine
     assert "const launchAt = Math.max(T.launch, (firstAt - ASK_AHEAD) / PACE);" in engine
@@ -294,8 +294,8 @@ def test_the_shuffle_says_what_it_is_doing(page: str) -> None:
     """The toast names the deal from the first frame; the stage itself is
     hidden from assistive tech so the announcement is not doubled."""
     dealer = _dealer(page)
-    assert "Dealing ${count} sessions into one window." in dealer
-    assert "Dealing ${count} sessions into windows of their own." in dealer
+    assert "Dealing ${count} sessions into one window. Esc to skip." in dealer
+    assert "Dealing ${count} sessions into windows of their own. Esc to skip." in dealer
     assert 'host.setAttribute("aria-hidden", "true");' in dealer
 
 
@@ -488,7 +488,7 @@ out.aimed = tabs.aim(spot, 36);
 out.again = tabs.aim(spot, 36);
 // The window it was dealt into, and where every card ended up.
 const frame = made.find((el) => el.className === "sh-win" && el.classList.contains("sh-real"));
-tabs.render(2498);
+tabs.render(2698);
 const parse = (el) => (el.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\)/) || []).slice(1).map(Number);
 out.frame = parse(frame);
 out.cards = made.filter((el) => el.className === "sh-card").map((el) => parse(el).map((v, i) => v + (i ? 26 : 35)));
@@ -496,7 +496,7 @@ const own = make("windows", 250);
 out.windows = own.aim(spot, 36);
 out.gaps = [tabs.stagger(), own.stagger()];
 const late = make("tabs", 250);
-now += 2800;
+now += 3200;
 out.late = late.aim(spot, 36);
 out.nolead = make("tabs", undefined).LAUNCH;
 console.log(JSON.stringify(out));
@@ -516,11 +516,11 @@ def test_the_cards_are_thrown_into_where_the_real_window_opens(page: str, tmp_pa
     ran = subprocess.run([node, str(script)], capture_output=True, text=True)
     assert ran.returncode == 0, ran.stderr.strip()
     seen = json.loads(ran.stdout)
-    # Ten cards land at 2498 scene ms, 4996 real; the window is due then, and
+    # Ten cards land at 2698 scene ms, 5396 real; the window is due then, and
     # the request goes out half a second early with the rest of the wait.
-    assert seen["launch"] == 4996 - 250 - 500
-    assert seen["nolead"] == 4996 - 500
-    assert 4990 - 250 <= seen["wait"] <= 4996 - 250
+    assert seen["launch"] == 5396 - 250 - 500
+    assert seen["nolead"] == 5396 - 500
+    assert 5390 - 250 <= seen["wait"] <= 5396 - 250
     assert seen["room"]["right"] < 420, "the window starts clear of the figure"
     assert seen["aimed"] is True and seen["again"] is False
     assert seen["windows"] is False and seen["late"] is False
@@ -555,7 +555,7 @@ def test_the_shuffling_figure_is_the_icon_with_its_eyes_shut(page: str) -> None:
     assert len(re.findall(r'<circle class="pupil" cx="32"[^>]*/>', figure)) == 1
     assert len(re.findall(r'<ellipse class="mouth"[^>]*/>', figure)) == 1
     derived = page.split("const SHUFFLE_FIGURE = FIGURE", 1)[1].split(";\n", 1)[0]
-    for part in ("sh-figure", "sh-bliss", "sh-face", "sh-o", "sh-line"):
+    for part in ("sh-figure", "sh-bliss", "sh-sleep", "sh-face", "sh-o", "sh-line"):
         assert part in derived, f"{part} is not put into the shuffling figure"
 
 
@@ -662,7 +662,7 @@ const figure = made.find((el) => el.className === "sh-ghost");
 const o = figure.kids[".sh-o"], line = figure.kids[".sh-line"];
 const at = (t) => { show.render(t); return { rx: Number(o.attrs.rx), ry: Number(o.attrs.ry),
                                             line: Number(line.style.opacity), d: line.attrs.d }; };
-console.log(JSON.stringify({ wait: at(200), sing: at(640), deal: at(1700), landed: at(2600) }));
+console.log(JSON.stringify({ wait: at(200), sing: at(700), deal: at(1800), landed: at(2700) }));
 """
 
 
@@ -700,3 +700,159 @@ def test_the_dealing_figure_keeps_the_icons_three_colours(page: str) -> None:
     for selector, body in figure_rules:
         for prop, value in re.findall(r"(fill|stroke|color|background)\s*:\s*([^;]+)", body):
             assert value.strip().lower() in allowed, f"{selector.strip()} {prop}: {value}"
+
+
+_RISE_HARNESS = r"""
+const made = [];
+const fake = (tag) => {
+  const el = {
+    tag, style: { setProperty() {} }, dataset: {}, textContent: "", innerHTML: "", attrs: {}, kids: {},
+    clientWidth: 902, clientHeight: 398, className: "",
+    classList: { set: new Set(), contains(c) { return this.set.has(c); },
+                 toggle(c, on) { on ? this.set.add(c) : this.set.delete(c); } },
+    setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k] || ""; },
+    appendChild() {}, querySelector(sel) { return (this.kids[sel] = this.kids[sel] || fake()); },
+    querySelectorAll: () => [fake(), fake()],
+  };
+  let first = null;
+  Object.defineProperty(el, "firstChild", { get: () => (first = first || fake()) });
+  made.push(el);
+  return el;
+};
+globalThis.document = { createElement: fake };
+globalThis.requestAnimationFrame = () => 0;
+const stillness = () => false;
+%ENGINE%
+const host = fake();
+const show = startShuffle(host, { count: 10, layout: "tabs", figure: "", agents: Array(10).fill("claude-code"),
+                                  names: Array(10).fill("x"), below: 48 });
+const figure = made.find((el) => el.className === "sh-ghost");
+const at = (el) => (el.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\)/) || []).slice(1).map(Number);
+const order = (cls) => made.findIndex((el) => el.className.startsWith(cls));
+const hazes = made.filter((el) => el.className.startsWith("sh-mist"));
+const sleep = figure.kids[".sh-sleep"], body = figure.kids[".body"];
+const out = { order: { mist: order("sh-mist"), figure: order("sh-ghost"), card: order("sh-card"),
+                       lastMist: made.lastIndexOf(hazes[hazes.length - 1]) },
+              widths: hazes.map((el) => parseFloat(el.style.width)) };
+show.render(20);
+out.start = { y: at(figure)[1], mask: figure.style.maskImage, asleep: sleep.style.display !== "none" };
+show.render(200);
+out.mid = { mist: Math.max(...hazes.map((el) => Number(el.style.opacity))), mask: figure.style.maskImage };
+show.render(520);
+out.up = { y: at(figure)[1], mask: figure.style.maskImage, asleep: sleep.style.display !== "none",
+           body: body.attrs.d };
+show.render(1400);
+out.later = { mist: Math.max(...hazes.map((el) => Number(el.style.opacity))) };
+// a hit on the beat pulls the hem out of shape, and it is the drawing again at rest
+let bent = 0;
+for (let t = 520; t < 1400; t += 8) {
+  show.render(t);
+  const corner = Number((body.attrs.d.match(/^M([-\d.]+) 42/) || [])[1]);
+  bent = Math.max(bent, Math.abs(corner - 4));
+}
+out.bent = bent;
+show.fail();
+show.render(show.END / show.PACE);
+out.gone = Math.max(...hazes.map((el) => Number(el.style.opacity)));
+console.log(JSON.stringify(out));
+"""
+
+
+def test_the_figure_rises_out_of_grave_mist(page: str, tmp_path) -> None:
+    """It used to pop out of a puff smaller than itself, so it was seen appearing
+    behind it. Now it comes up out of the floor through mist wider than it is,
+    asleep, and wakes as it clears it."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    engine = page.split("  const SHUFFLE_FROM = 6;", 1)[1].split("  // Lays the stage over the register", 1)[0]
+    script = tmp_path / "rise.js"
+    script.write_text(_RISE_HARNESS.replace("%ENGINE%", engine), encoding="utf-8")
+    ran = subprocess.run([node, str(script)], capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stderr.strip()
+    seen = json.loads(ran.stdout)
+    # Behind the figure, in front of it, and under every card.
+    assert seen["order"]["mist"] < seen["order"]["figure"] < seen["order"]["lastMist"] < seen["order"]["card"]
+    body_width = 36 * 150 / 58
+    banks = [w for w in seen["widths"] if w > 200]
+    assert len(banks) >= 4 and min(banks) > 2 * body_width, "every bank is wider than the figure"
+    # Down in the ground at first, fading out into the mist, and asleep.
+    assert seen["up"]["y"] - seen["start"]["y"] < -70
+    assert "linear-gradient" in seen["start"]["mask"] and "linear-gradient" in seen["mid"]["mask"]
+    assert seen["start"]["asleep"] is True
+    # Out, with nothing left cutting it off, awake.
+    assert seen["up"]["mask"] == "" and seen["up"]["asleep"] is False
+    corner = float(re.match(r"M([-\d.]+) 42", seen["up"]["body"]).group(1))
+    assert abs(corner - 4) < 0.1, "at rest the sheet hangs as drawn"
+    # Stirred up while it rises, a thin ground mist after, gone when the scene is.
+    assert seen["mid"]["mist"] > 0.5
+    assert 0.1 < seen["later"]["mist"] < seen["mid"]["mist"] * 0.6
+    assert seen["gone"] == 0
+    # The sheet trails the head on the beat, and not by much.
+    assert 0.3 < seen["bent"] < 2.5
+
+
+def test_the_mist_is_drawn_while_the_page_is_idle(page: str) -> None:
+    """All four textures together are a long task, which would be dropped frames
+    on the click, so the page draws one each time it is idle."""
+    assert "requestIdleCallback(fn, { timeout: 5000 })" in page
+    later = page.split("const mistLater = () => {", 1)[1].split("};", 1)[0]
+    assert "if (stillness() || mists.length >= MIST_PLAN.length) return;" in later
+    assert later.count("paintMist(") == 1, "one texture per idle turn"
+    assert "const MIST = mist();" in _shuffle_engine(page)
+    assert 'const ctx = canvas.getContext ? canvas.getContext("2d") : null;' in page
+    assert 'if (!ctx) return "";' in page
+
+
+_MIST_HARNESS = r"""
+%ENGINE%
+const out = MIST_PLAN.map((plan) => {
+  const [, w, h] = plan;
+  const a = mistField(...plan), b = mistField(...plan);
+  let edge = 0, most = 0, same = a.length === b.length;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = a[y * w + x];
+      if (v !== b[y * w + x]) same = false;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) edge = Math.max(edge, v);
+      most = Math.max(most, v);
+    }
+  }
+  return { w, h, edge, most, same, size: a.length };
+});
+console.log(JSON.stringify(out));
+"""
+
+
+def test_no_edge_of_the_mist_ever_shows(page: str, tmp_path) -> None:
+    """A texture that is not empty at its border shows as a straight edge in the
+    fog. The same seed gives the same mist, and there is mist to see."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    engine = page.split("  const SHUFFLE_FROM = 6;", 1)[1].split("  // Lays the stage over the register", 1)[0]
+    script = tmp_path / "mist.js"
+    script.write_text(_MIST_HARNESS.replace("%ENGINE%", engine), encoding="utf-8")
+    ran = subprocess.run([node, str(script)], capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stderr.strip()
+    textures = json.loads(ran.stdout)
+    assert len(textures) == 4
+    for tex in textures:
+        assert tex["size"] == tex["w"] * tex["h"]
+        assert tex["edge"] == 0, tex
+        assert tex["most"] > 0.3 * 255, tex
+        assert tex["same"] is True
+
+
+def test_the_mist_glow_is_not_the_tab_glow(page: str) -> None:
+    """The mist's ember glow was first given the class the tabs already use for
+    their flash, which blew every tab's flash up to the glow's size and left the
+    glow itself without a colour."""
+    styles = page.split("/* ── the shuffle", 1)[1].split("/* ── states", 1)[0]
+    assert '<b class="sh-glow"></b>' in page
+    assert 'const glow = add("i", "sh-ember");' in page
+    ember = [body for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", styles) if ".sh-ember" in sel]
+    assert any("radial-gradient" in body for body in ember)
+    for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", styles):
+        if ".sh-glow" in sel:
+            assert "width" not in body and "height" not in body, sel
