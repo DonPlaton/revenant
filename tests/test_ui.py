@@ -7,6 +7,7 @@ nothing in the file reaches for the network.
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -161,7 +162,7 @@ def test_the_page_script_actually_parses(page: str, tmp_path: Path) -> None:
 # reviving
 # --------------------------------------------------------------------------- #
 def _revive_handler(page: str) -> str:
-    return page.split('el.raise.addEventListener("click", async () => {', 1)[1].split("// ── window chrome", 1)[0]
+    return page.split('el.raise.addEventListener("click", async (event) => {', 1)[1].split("// ── window chrome", 1)[0]
 
 
 def test_the_revival_is_shown_before_anything_launches(page: str) -> None:
@@ -232,11 +233,11 @@ def test_the_stamp_does_not_land_on_the_turn_count(page: str) -> None:
 # the shuffle
 # --------------------------------------------------------------------------- #
 def _shuffle_engine(page: str) -> str:
-    return page.split("function startShuffle(host, opts) {", 1)[1].split("function deal(ids) {", 1)[0]
+    return page.split("function startShuffle(host, opts) {", 1)[1].split("function deal(ids, corner) {", 1)[0]
 
 
 def _dealer(page: str) -> str:
-    return page.split("function deal(ids) {", 1)[1].split("const STAMP_FROM", 1)[0]
+    return page.split("function deal(ids, corner) {", 1)[1].split("const STAMP_FROM", 1)[0]
 
 
 def test_more_than_five_are_dealt_rather_than_stamped(page: str) -> None:
@@ -247,15 +248,21 @@ def test_more_than_five_are_dealt_rather_than_stamped(page: str) -> None:
     assert "if (!document.documentElement.dataset.still && !dealt) {" in body
 
 
-def test_a_dealt_revival_launches_while_the_cards_are_in_the_air(page: str) -> None:
-    """Waiting for the last card to land would add two and a half seconds to a
-    click; the terminals take a moment to appear anyway, so the ask goes out as
-    the first card leaves the deck."""
+def test_a_dealt_revival_launches_as_the_cards_land(page: str) -> None:
+    """Filmed on a real desktop, a terminal asked for as the first card left the
+    deck came up 0.4 s later over the app and hid the rest of the deal. The
+    launch is timed for the last card's landing instead: the request goes out a
+    little early and carries the rest of the wait for the service to keep."""
     engine = _shuffle_engine(page)
     assert "launch: 1480" in engine
     assert "const LANDED = T.launch + DEAL * (SHOWN - 1) + FLIGHT;" in engine
-    assert "if (!launched && t >= T.launch) {" in engine
-    assert "onLaunch: resolve," in _dealer(page)
+    assert "const firstAt = LANDED * PACE - LEAD;" in engine
+    assert "const launchAt = Math.max(T.launch, (firstAt - ASK_AHEAD) / PACE);" in engine
+    assert "if (!launched && t >= launchAt) {" in engine
+    dealer = _dealer(page)
+    assert "onLaunch: resolve," in dealer
+    assert "lead: (opens[drawn(layout)] || {}).lead," in dealer
+    assert "wish: () => ({ room, wait: Math.round(show ? show.wait() : 0), stagger: show ? show.stagger() : 0 })," in dealer
 
 
 def test_a_scene_without_frames_still_lets_the_revival_through(page: str) -> None:
@@ -333,7 +340,7 @@ def test_the_request_carries_what_was_on_screen_at_the_click(page: str) -> None:
     body = _revive_handler(page)
     captured = body.index("const sent = { ids, days: stop().days, agent, layout };")
     assert captured < body.index("await Promise.race([show ? show.launch")
-    assert "body: JSON.stringify(sent)," in body
+    assert "body: JSON.stringify(show ? { ...sent, ...show.wish() } : sent)," in body
 
 
 def test_cards_are_dealt_in_the_order_the_terminals_open(page: str) -> None:
@@ -386,10 +393,12 @@ const fake = () => {
     classList: { set: new Set(), contains(c) { return this.set.has(c); },
                  toggle(c, on) { on ? this.set.add(c) : this.set.delete(c); } },
     setAttribute() {}, getAttribute: () => "", appendChild() {}, querySelector: () => fake(),
-    querySelectorAll: () => [fake(), fake()],
+    querySelectorAll: () => [fake(), fake()], remove() {},
   };
-  let first = null;
+  el.classList.add = (c) => el.classList.set.add(c);
+  let first = null, last = null;
   Object.defineProperty(el, "firstChild", { get: () => (first = first || fake()) });
+  Object.defineProperty(el, "lastChild", { get: () => (last = last || fake()) });
   return el;
 };
 globalThis.document = { createElement: fake };
@@ -405,9 +414,11 @@ for (const layout of ["tabs", "windows"]) {
         host.clientWidth = w; host.clientHeight = h;
         const agents = [...Array(count)].map((_, i) => (i % 3 === 1 ? "codex" : "claude-code"));
         const show = startShuffle(host, {
-          count, layout, figure: "", agents, names: agents.map((a, i) => `s${i}`), below: 48,
+          count, layout, figure: "", agents, names: agents.map((a, i) => `s${i}`), below: 48, lead: 250,
           origins: withOrigins ? agents.slice(0, 12).map((_, i) => ({ x: 74, y: 17.5 + 96 * i })) : undefined,
         });
+        // Half the deals are thrown into where the real window will open.
+        if (withOrigins) show.aim([{ x: w * 0.4, y: 8, width: w * 0.8, height: h }], 36);
         const end = show.END / show.PACE;
         for (let t = 0; t <= end + 40; t += 8) { show.render(t); frames++; }
         show.fail();
@@ -434,6 +445,92 @@ def test_every_frame_of_the_scene_renders(page: str, tmp_path) -> None:
     ran = subprocess.run([node, str(script)], capture_output=True, text=True)
     assert ran.returncode == 0, ran.stderr.strip()
     assert ran.stdout.startswith("frames ")
+
+
+_PLACE_HARNESS = r"""
+const made = [];
+const fake = () => {
+  const el = {
+    style: { setProperty() {} }, dataset: {}, textContent: "", innerHTML: "", className: "",
+    clientWidth: 0, clientHeight: 0,
+    classList: { set: new Set(), contains(c) { return this.set.has(c); },
+                 toggle(c, on) { on ? this.set.add(c) : this.set.delete(c); } },
+    setAttribute() {}, getAttribute: () => "", appendChild() {}, querySelector: () => fake(),
+    querySelectorAll: () => [fake(), fake()], remove() { this.gone = true; },
+  };
+  el.classList.add = (c) => el.classList.set.add(c);
+  let first = null, last = null;
+  Object.defineProperty(el, "firstChild", { get: () => (first = first || fake()) });
+  Object.defineProperty(el, "lastChild", { get: () => (last = last || fake()) });
+  made.push(el);
+  return el;
+};
+globalThis.document = { createElement: fake };
+globalThis.requestAnimationFrame = () => 0;
+let now = 1000;
+globalThis.performance = { now: () => now };
+const stillness = () => false;
+%ENGINE%
+const make = (layout, lead) => {
+  const host = fake();
+  host.clientWidth = 902; host.clientHeight = 398;
+  const agents = [...Array(10)].map(() => "claude-code");
+  return startShuffle(host, { count: 10, layout, figure: "", agents, names: agents.map((a, i) => `s${i}`),
+                              below: 48, lead });
+};
+const spot = [{ x: 420, y: 8, width: 700, height: 500 }];
+const out = {};
+const tabs = make("tabs", 250);
+out.launch = tabs.LAUNCH;
+out.wait = tabs.wait();
+out.room = tabs.room;
+out.aimed = tabs.aim(spot, 36);
+out.again = tabs.aim(spot, 36);
+// The window it was dealt into, and where every card ended up.
+const frame = made.find((el) => el.className === "sh-win" && el.classList.contains("sh-real"));
+tabs.render(2498);
+const parse = (el) => (el.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\)/) || []).slice(1).map(Number);
+out.frame = parse(frame);
+out.cards = made.filter((el) => el.className === "sh-card").map((el) => parse(el).map((v, i) => v + (i ? 26 : 35)));
+const own = make("windows", 250);
+out.windows = own.aim(spot, 36);
+out.gaps = [tabs.stagger(), own.stagger()];
+const late = make("tabs", 250);
+now += 2800;
+out.late = late.aim(spot, 36);
+out.nolead = make("tabs", undefined).LAUNCH;
+console.log(JSON.stringify(out));
+"""
+
+
+def test_the_cards_are_thrown_into_where_the_real_window_opens(page: str, tmp_path) -> None:
+    """Told where the real window will open before the destination shows, the
+    scene draws it there and every card lands in its tab strip. Told too late,
+    or for windows of their own, it keeps its stand-in."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    engine = page.split("  const SHUFFLE_FROM = 6;", 1)[1].split("  // Lays the stage over the register", 1)[0]
+    script = tmp_path / "place.js"
+    script.write_text(_PLACE_HARNESS.replace("%ENGINE%", "  const SHUFFLE_FROM = 6;" + engine), encoding="utf-8")
+    ran = subprocess.run([node, str(script)], capture_output=True, text=True)
+    assert ran.returncode == 0, ran.stderr.strip()
+    seen = json.loads(ran.stdout)
+    # Ten cards land at 2498 scene ms, 4996 real; the window is due then, and
+    # the request goes out half a second early with the rest of the wait.
+    assert seen["launch"] == 4996 - 250 - 500
+    assert seen["nolead"] == 4996 - 500
+    assert 4990 - 250 <= seen["wait"] <= 4996 - 250
+    assert seen["room"]["right"] < 420, "the window starts clear of the figure"
+    assert seen["aimed"] is True and seen["again"] is False
+    assert seen["windows"] is False and seen["late"] is False
+    assert seen["gaps"] == [0, 110], "one call for tabs; windows one after another"
+    x, y = seen["frame"]
+    assert (x, y) == (420, 8)
+    assert len(seen["cards"]) == 10
+    for cx, cy in seen["cards"]:
+        assert x < cx < 902, "every card lands on the strip the stage shows"
+        assert y < cy < y + 36
 
 
 def test_no_top_level_name_is_declared_twice(page: str) -> None:

@@ -319,6 +319,15 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 .sh-tab.sh-live{background:#2e2925;border:1px solid rgba(238,234,225,.12);border-bottom:0}
 .sh-tab:not(.sh-live) i{opacity:0}
 .sh-hole{left:0;top:0;border-radius:5px}
+/* Where the real window will open: drawn at its size and nearly its black, so
+   the window that comes up takes its place. It grows from its corner, which is
+   what the window is placed by. */
+.sh-win.sh-real{transform-origin:0 0;border-radius:8px;background:#0e0d0c}
+.sh-real .sh-strip{background:#1c1a18}
+.sh-real .sh-tab i{top:calc(50% - 2.5px);left:10px;margin-left:0}
+.sh-title{position:absolute;left:21px;right:6px;top:50%;transform:translateY(-50%);
+  font:500 10px/1.2 var(--mono);color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-tab:not(.sh-live) .sh-title{opacity:.45}
 .sh-more{position:absolute;font:600 11px/1 var(--mono);color:var(--ink-2);white-space:nowrap}
 /* A tab lights in its card's colour as the card lands in it. */
 .sh-glow{position:absolute;inset:0;border-radius:inherit;background:var(--accent);opacity:0}
@@ -1092,6 +1101,9 @@ html[data-still] .sweep{display:none}
   // drawn exactly, which is how it is tested. Every class it adds starts with
   // sh-, because the page already styles .bar, .name and .body globally.
   const SHUFFLE_FROM = 6;
+  // How long before the first window is due the revival is sent, for the
+  // service to check the sessions first. It holds the rest of the wait itself.
+  const ASK_AHEAD = 500;
 
   function startShuffle(host, opts) {
     const N = opts.count;
@@ -1222,33 +1234,48 @@ html[data-still] .sweep{display:none}
     // riffle is fixed, so each card knows from the start which one it will be.
     const rank = (id) => order2.length - 1 - order2.indexOf(id);
     const more = N - SHOWN;
-    let win = null, screen = null, tabW = 0;
-    const tabs = [], minis = [], holes = [];
-    if (LAYOUT === "tabs") {
-      win = add("div", "sh-win");
-      win.style.cssText = `width:${WIN.w}px;height:${WIN.h}px`;
-      win.innerHTML = `<div class="sh-strip"></div><div class="sh-screen"><b>&gt;</b> ` +
-        `<span class="sh-typed"></span><span class="sh-cursor"></span>\n<span class="sh-said"></span></div>`;
-      const strip = win.querySelector(".sh-strip");
-      const slot = Math.min(34, (WIN.w - 16 - (more > 0 ? 30 : 0)) / SHOWN);
+    let win = null, screen = null, tabW = 0, tabTop = 6, tabH = 20;
+    let tabs = [], minis = [], holes = [];
+    // The one window, drawn where the service says the real one will open once
+    // it has said so, and as a small stand-in on the right until then.
+    let box = { x: dest.x - WIN.w / 2, y: dest.y - WIN.h / 2, w: WIN.w, h: WIN.h };
+    const frameOf = (w, h, stripH, withScreen) => {
+      const node = add("div", "sh-win");
+      node.style.cssText = `width:${w}px;height:${h}px`;
+      node.innerHTML = `<div class="sh-strip" style="height:${stripH}px"></div>` + (withScreen
+        ? `<div class="sh-screen" style="top:${stripH + 14}px"><b>&gt;</b> ` +
+          `<span class="sh-typed"></span><span class="sh-cursor"></span>\n<span class="sh-said"></span></div>`
+        : "");
+      return node;
+    };
+    // A tab wide enough to read carries its session's name, as the real one will.
+    const tabIn = (strip, left, i, named) => {
+      const tab = document.createElement("div");
+      tab.className = "sh-tab";
+      tab.style.cssText = `left:${left}px;width:${tabW}px;top:${tabTop}px;height:${tabH}px;--accent:${accent(i)}`;
+      tab.innerHTML = `<b class="sh-glow"></b><i></i>` + (named ? `<span class="sh-title"></span>` : "");
+      if (named) tab.lastChild.textContent = opts.names[i] || "";
+      tab.dataset.cx = left + tabW / 2;
+      strip.appendChild(tab);
+      return tab;
+    };
+    const tabsIn = (node, room) => {
+      const strip = node.querySelector(".sh-strip");
+      const slot = Math.min(room.most, (room.width - (more > 0 ? 30 : 0)) / SHOWN);
       tabW = slot - 3;
-      for (let i = 0; i < SHOWN; i++) {
-        const tab = document.createElement("div");
-        tab.className = "sh-tab";
-        tab.style.cssText = `left:${8 + i * slot}px;width:${tabW}px;--accent:${accent(i)}`;
-        tab.innerHTML = `<b class="sh-glow"></b><i></i>`;
-        tab.dataset.cx = 8 + i * slot + tabW / 2;
-        strip.appendChild(tab);
-        tabs.push(tab);
-      }
+      tabs = [...Array(SHOWN)].map((_, i) => tabIn(strip, 8 + i * slot, i, tabW >= 56));
       if (more > 0) {
         const tail = document.createElement("span");
         tail.className = "sh-more";
-        tail.style.cssText = `left:${12 + SHOWN * slot}px;top:11px`;
+        tail.style.cssText = `left:${12 + SHOWN * slot}px;top:${tabTop + tabH / 2 - 5}px`;
         tail.textContent = `+${more}`;
         strip.appendChild(tail);
       }
-      screen = { typed: win.querySelector(".sh-typed"), said: win.querySelector(".sh-said") };
+      screen = { typed: node.querySelector(".sh-typed"), said: node.querySelector(".sh-said") };
+    };
+    if (LAYOUT === "tabs") {
+      win = frameOf(WIN.w, WIN.h, 26, true);
+      tabsIn(win, { most: 34, width: WIN.w - 16 });
     } else {
       const cols = 4, rows = Math.ceil(SHOWN / cols);
       for (let i = 0; i < SHOWN; i++) {
@@ -1374,7 +1401,7 @@ html[data-still] .sweep{display:none}
     const dealtAt = (slot) => T.launch + slot * DEAL;
     // Where a slot is in the scene, for the cards to land on and the eyes to find.
     const slotAt = (slot) => (win
-      ? { x: dest.x - WIN.w / 2 + Number(tabs[slot].dataset.cx), y: dest.y - WIN.h / 2 + 16 }
+      ? { x: box.x + Number(tabs[slot].dataset.cx), y: box.y + tabTop + tabH / 2 }
       : { x: Number(minis[slot].dataset.x), y: Number(minis[slot].dataset.y) });
     // A failed launch cuts the scene short: everything fades from wherever it is.
     let fadeFrom = END - 240;
@@ -1484,8 +1511,8 @@ html[data-still] .sweep{display:none}
       });
       if (win) {
         win.style.opacity = (destIn * out).toFixed(3);
-        win.style.transform = `translate(${dest.x - WIN.w / 2}px, ` +
-          `${dest.y - WIN.h / 2 + (1 - destIn) * 14}px) scale(${lerp(0.96, 1, destIn)})`;
+        win.style.transform = `translate(${box.x}px, ` +
+          `${box.y + (1 - destIn) * 14}px) scale(${lerp(0.96, 1, destIn)})`;
       }
 
       // ── the cards ──
@@ -1529,8 +1556,9 @@ html[data-still] .sweep{display:none}
           const pf = span(t, go, go + FLIGHT), pe = ease(pf);
           const from = stackPos(order2.indexOf(id));
           const aim = slotAt(slot);
-          const tsx = win ? tabW / CW : MINI.w / CW, tsy = win ? 20 / CH : MINI.h / CH;
-          const tr = win ? 0 : Number(minis[slot].dataset.r);
+          const tabbed = Boolean(win);
+          const tsx = tabbed ? tabW / CW : MINI.w / CW, tsy = tabbed ? tabH / CH : MINI.h / CH;
+          const tr = tabbed ? 0 : Number(minis[slot].dataset.r);
           // Dealt off the right edge of the deck, then thrown in an arc that
           // rises toward the viewer; on the way the screen wakes up, and on
           // arrival the card takes the shape of what it lands in.
@@ -1544,7 +1572,7 @@ html[data-still] .sweep{display:none}
           sx = lerp(1, tsx, pe) * grow;
           sy = lerp(1, tsy, pe) * grow;
           boot = arc(span(pf, 0.1, 0.95)) * 0.5;
-          o = win ? 1 - span(pf, 0.8, 1) : 1 - span(pf, 0.9, 1);
+          o = tabbed ? 1 - span(pf, 0.8, 1) : 1 - span(pf, 0.9, 1);
         }
         card.style.opacity = (o * out).toFixed(3);
         card.style.transform = `translate(${(x - CW / 2).toFixed(1)}px, ${(y - CH / 2).toFixed(1)}px) ` +
@@ -1619,6 +1647,44 @@ html[data-still] .sweep{display:none}
     const began = performance.now();
     const clock = (now) => (now - began) / PACE;
     let launched = false, done = false, stopAt = END;
+    // The terminals come up on top of whatever is still moving, so the first
+    // is asked for as the last card lands, and not before: `lead` is how long
+    // this terminal's window takes to show after the call. The request goes
+    // out a little earlier than that, with the rest of the wait in it, so the
+    // service has time to check the sessions and the window is still on time.
+    const LEAD = Math.max(0, Number(opts.lead) || 0);
+    const firstAt = LANDED * PACE - LEAD;
+    const launchAt = Math.max(T.launch, (firstAt - ASK_AHEAD) / PACE);
+    // Windows of their own are asked for one after another. Started all at
+    // once, ten of them held even the first back by over a second, filmed.
+    const STAGGER = LAYOUT === "tabs" ? 0 : 110;
+
+    // Moves the window the cards are dealt into to where the real one will open,
+    // given in stage pixels. Too late once the window is on show, and then the
+    // scene keeps its stand-in.
+    function aim(spots, strip) {
+      if (done || LAYOUT !== "tabs" || !win || !spots.length || box.real ||
+          clock(performance.now()) > T.square - 20) {
+        return false;
+      }
+      const s = spots[0];
+      const band = strip / k;
+      tabTop = Math.round(band * 0.2);
+      tabH = band - tabTop;
+      win.remove();
+      box = { x: (s.x - ox) / k, y: s.y / k, w: s.width / k, h: s.height / k, real: true };
+      win = frameOf(box.w, box.h, band, true);
+      win.classList.add("sh-real");
+      // The caption buttons and the new-tab button keep their end of the strip,
+      // and the tabs stay on the part of it the stage shows: the window runs on
+      // past the edge of the page.
+      const shown = Math.max(60, (W - ox) / k - box.x - 20);
+      tabsIn(win, { most: 120 / k, width: Math.min(box.w - 170 / k, shown) });
+      win.style.setProperty("--accent", accent(front));
+      screen.said.textContent = opts.names[front] || "";
+      return true;
+    }
+
     const finish = () => {
       if (done) return;
       done = true;
@@ -1636,7 +1702,7 @@ html[data-still] .sweep{display:none}
       } catch (e) {
         return finish();
       }
-      if (!launched && t >= T.launch) {
+      if (!launched && t >= launchAt) {
         launched = true;
         if (opts.onLaunch) opts.onLaunch();
       }
@@ -1650,7 +1716,16 @@ html[data-still] .sweep{display:none}
       render,
       PACE,
       END: END * PACE,
-      LAUNCH: T.launch * PACE,
+      LAUNCH: launchAt * PACE,
+      aim,
+      // Where the scene keeps clear of, and where tab strips can be seen land,
+      // in stage pixels: right of the figure and its notes, inside the stage.
+      // The deck may be covered: it is empty by the time a window comes up.
+      room: { right: ox + (ghost.x + 96) * k + 12, top: 8, bottom: H - 8 - 40 },
+      // How long from now until the first terminal should be started, and how
+      // far apart the rest go; no waiting once the scene is gone.
+      wait: () => (done ? 0 : Math.max(0, began + firstAt - performance.now())),
+      stagger: () => (done ? 0 : STAGGER),
       // A failed launch fades everything out from where it stands.
       fail() {
         fadeFrom = Math.min(fadeFrom, clock(performance.now()));
@@ -1663,7 +1738,7 @@ html[data-still] .sweep{display:none}
   // Lays the stage over the register and starts the scene. Resolves `launch`
   // when the cards are about to leave the deck, or after a timer if frames have
   // stopped (a hidden window gets none) or the scene never started at all.
-  function deal(ids) {
+  function deal(ids, corner) {
     const host = document.createElement("div");
     host.className = "sh-stage";
     host.setAttribute("aria-hidden", "true");
@@ -1715,6 +1790,7 @@ html[data-still] .sweep{display:none}
           names: picked.map((s) => s.label),
           origins,
           below,
+          lead: (opens[drawn(layout)] || {}).lead,
           onLaunch: resolve,
           onEnd: clear,
         });
@@ -1726,8 +1802,51 @@ html[data-still] .sweep{display:none}
         resolve();
       }
     });
-    return { launch, ended, fail: () => { if (show) show.fail(); }, stop: () => { if (show) show.stop(); } };
+
+    // Asks where the real window will open, so the cards can be thrown into its
+    // tabs. In the page's own pixels, measured from the screen: the work area,
+    // where the window may start clear of the figure, and the band its tab strip
+    // has to land in to be seen. Windows of their own, a second screen, or no
+    // answer in time, and the scene keeps its stand-in.
+    let room = null;
+    if (show && show.aim && corner && drawn(layout) === "tabs" && !screen.isExtended) {
+      const box = host.getBoundingClientRect();
+      const left = screen.availLeft || 0, top = screen.availTop || 0;
+      const asked = {
+        scale: devicePixelRatio,
+        screen: [left, top, left + screen.availWidth, top + screen.availHeight],
+        left: corner.x + box.left + show.room.right,
+        top: corner.y + box.top + show.room.top,
+        bottom: corner.y + box.top + show.room.bottom,
+      };
+      api("/api/place", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ layout: drawn(layout), room: asked }),
+      }, 2000).then((answer) => {
+        const spots = (answer && answer.spots) || [];
+        const stage = spots.map((s) => ({ ...s, x: s.x - corner.x - box.left, y: s.y - corner.y - box.top }));
+        if (show.aim(stage, answer.strip)) room = asked;
+      }).catch(() => {});
+    }
+    return {
+      launch,
+      ended,
+      fail: () => { if (show) show.fail(); },
+      stop: () => { if (show) show.stop(); },
+      // What the revival carries so its window opens where, and when, the cards
+      // went: the room it was placed in, the wait before the launch, and the
+      // gap between windows of their own.
+      wish: () => ({ room, wait: Math.round(show ? show.wait() : 0), stagger: show ? show.stagger() : 0 }),
+    };
   }
+
+  // Where the page's top-left corner sits on the screen, in its own pixels:
+  // exact from a pointer, and from the window's frame for a key press.
+  const corner = (e) => (e && (e.screenX || e.clientX)
+    ? { x: e.screenX - e.clientX, y: e.screenY - e.clientY }
+    : { x: screenX + (outerWidth - innerWidth) / 2,
+        y: screenY + (outerHeight - innerHeight) - (outerWidth - innerWidth) / 2 });
 
   // The terminals a revival opens come up on top and take focus, so whatever is
   // still animating when they start plays to nobody. The page shows the moment
@@ -1753,7 +1872,7 @@ html[data-still] .sweep{display:none}
     setTimeout(() => run(agent), 250);
   });
 
-  el.raise.addEventListener("click", async () => {
+  el.raise.addEventListener("click", async (event) => {
     // A second click or an Enter during the wait would launch the same sessions
     // twice, so a revival in flight ignores both.
     if (!chosen.size || el.raise.dataset.busy === "true") return;
@@ -1768,7 +1887,7 @@ html[data-still] .sweep{display:none}
     const every = stampEvery(ids.length);
     // More than five are dealt instead of stamped: past five, a column of stamps reads as a list.
     const dealt = ids.length >= SHUFFLE_FROM && !stillness();
-    const show = dealt ? deal(ids) : null;
+    const show = dealt ? deal(ids, corner(event)) : null;
     const stampTimers = [];
     if (!document.documentElement.dataset.still && !dealt) {
       ids.forEach((id, i) => {
@@ -1809,7 +1928,7 @@ html[data-still] .sweep{display:none}
       result = await api("/api/revive", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sent),
+        body: JSON.stringify(show ? { ...sent, ...show.wish() } : sent),
       }, 60000);
     } catch (e) {
       result = { ok: false, message: e && e.name === "AbortError"
