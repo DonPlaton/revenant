@@ -71,14 +71,19 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
    clock, which is what keeps it from reading as a sliding cut-out. */
 .rev{display:block;height:100%;width:auto;overflow:visible;color:var(--ember)}
 .rev .body,.rev .peak{fill:currentColor}
+/* The hem is cloth, not feet: each point swings back from where it hangs and
+   stretches as it goes, one after another, so a wave runs along it. */
 .rev .peak{transform-box:fill-box;transform-origin:center top;
   animation:hem 620ms var(--ease) infinite alternate}
 .rev .peak:nth-child(2){animation-delay:80ms}
 .rev .peak:nth-child(3){animation-delay:160ms}
 .rev .peak:nth-child(4){animation-delay:240ms}
 .rev .peak:nth-child(5){animation-delay:320ms}
-@keyframes hem{from{transform:scaleY(1)}to{transform:scaleY(.55)}}
-.rev .shade{fill:#000;opacity:.16}
+@keyframes hem{from{transform:skewX(-4deg) scaleY(.9)}to{transform:skewX(14deg) scaleY(1.12)}}
+.rev .shade,.rev .tip-shade{fill:#000;opacity:.16}
+/* The shade runs on into the last point, and swings with it. */
+.rev .tip-shade{transform-box:view-box;transform-origin:36.4px 41.4px;
+  animation:hem 620ms var(--ease) 320ms infinite alternate}
 .rev .sheen{fill:#fff;opacity:.22}
 .rev .sclera{fill:#f4efe6}
 .rev .pupil{fill:#191715}
@@ -270,7 +275,7 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 .sh-ghost{transform-origin:50% 86%}
 .sh-ghost svg{display:block;width:100%;height:100%;overflow:visible;color:var(--ember)}
 .sh-ghost .body,.sh-ghost .peak{fill:currentColor}
-.sh-ghost .shade{fill:#000;opacity:.16}
+.sh-ghost .shade,.sh-ghost .tip-shade{fill:#000;opacity:.16}
 .sh-ghost .sheen{fill:#fff;opacity:.22}
 .sh-ghost .sclera{fill:#f4efe6}
 .sh-ghost .pupil{fill:#191715}
@@ -358,8 +363,10 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
   animation:hover 5.5s ease-in-out infinite alternate}
 .blank .pale .streak{display:none}
 .blank .pale .mouth{animation:none}
-/* Standing still on a page left open, so the hem idles rather than races. */
-.blank .pale .peak{animation-duration:2.4s}
+/* Standing still on a page left open, so the hem idles rather than races, and
+   hangs straight rather than trailing. */
+.blank .pale .peak,.blank .pale .tip-shade{animation-name:idle-hem;animation-duration:2.4s;animation-timing-function:ease-in-out}
+@keyframes idle-hem{from{transform:skewX(-6deg)}to{transform:skewX(6deg) scaleY(1.06)}}
 @keyframes hover{from{transform:translateY(0)}to{transform:translateY(-5px)}}
 .mote{position:absolute;width:2.5px;height:2.5px;border-radius:50%;background:var(--ember);
   opacity:0;animation:rise 7s linear infinite}
@@ -529,21 +536,21 @@ html[data-still] .sweep{display:none}
   // it. The streaks are motion rather than identity and stay out of the icon.
   const FIGURE = `<svg class="rev" viewBox="0 0 58 58" aria-hidden="true">
       <g>
-        <path class="streak" d="M45 16h8" stroke-width="3"/>
-        <path class="streak" d="M46 26h10" stroke-width="3.4"/>
-        <path class="streak" d="M45 34h7" stroke-width="2.6"/>
+        <path class="streak" d="M41 16h8" stroke-width="3"/>
+        <path class="streak" d="M42 26h10" stroke-width="3.4"/>
+        <path class="streak" d="M41 34h7" stroke-width="2.6"/>
       </g>
-      <path class="body" d="M5.5 21C5.5 10.6 13 2.5 22.5 2.5S39.5 10.6 39.5 21C39.5 30 41.6 37.2 44.5 43H0.5C3.4 37.2 5.5 30 5.5 21Z"/>
-      <g><path class="peak" d="M0.5 42.4h8.8L2.4 51z"/><path class="peak" d="M9.3 42.4h8.8L13.7 48.6z"/><path class="peak" d="M18.1 42.4h8.8L22.5 52z"/><path class="peak" d="M26.9 42.4h8.8L31.3 48.6z"/><path class="peak" d="M35.7 42.4h8.8L42.6 51z"/></g>
-      <path class="shade" d="M31.2 4.4C36.4 7.4 39.5 13.6 39.5 21C39.5 30 41.6 37.2 44.5 43H38.6C36.4 37.2 34.4 30 34.4 21C34.4 14.8 33.3 8.6 31.2 4.4Z"/>
-      <path class="sheen" d="M15 5.2C11 7.9 8.9 13.6 8.9 20.4V29.4C8.9 31.1 6.5 31.1 6.5 29.4V20.8C6.5 13.6 10 7.8 15 5.2Z"/>
+      <path class="body" d="M4 42V21C4 10.5 12 2.5 22 2.5S40 10.5 40 21v21z"/>
+      <g><path class="peak" d="M4 41.4h7.2C10.77 45.99 7.08 48.54 6.3 50.75Q6 51.85 5.7 50.75C4.92 48.54 4.43 45.99 4 41.4z"/><path class="peak" d="M11.2 41.4h7.2C17.97 44.73 15.38 46.58 14.69 47.99Q14.3 49.05 13.91 47.99C13.22 46.58 11.63 44.73 11.2 41.4z"/><path class="peak" d="M18.4 41.4h7.2C25.17 45.54 23.28 47.84 22.53 49.76Q22.2 50.85 21.87 49.76C21.12 47.84 18.83 45.54 18.4 41.4z"/><path class="peak" d="M25.6 41.4h7.2C32.37 44.55 30.98 46.3 30.31 47.6Q29.9 48.65 29.49 47.6C28.82 46.3 26.03 44.55 25.6 41.4z"/><path class="peak" d="M32.8 41.4h7.2C39.57 45.81 39.18 48.26 38.41 50.36Q38.1 51.45 37.79 50.36C37.02 48.26 33.23 45.81 32.8 41.4z"/><path class="tip-shade" d="M34 42H40C39.6 45.9 39.18 48.26 38.41 50.36Q38.1 51.45 37.79 50.36C37.2 46.8 34.9 43.6 34 42z"/></g>
+      <path class="shade" d="M30 3.6C36 7 40 13.4 40 21v21h-6V21c0-7-1.6-13.2-4-17.4z"/>
+      <path class="sheen" d="M14.6 5.2C11 8.6 9 14.2 9 21v7.5C9 30.8 7.4 32.8 6 34V21c0-6.6 3.2-12.8 8.6-15.8z"/>
       <g class="eyes">
         <ellipse class="sclera" cx="15.4" cy="21.5" rx="5.3" ry="6"/>
         <ellipse class="sclera" cx="29.6" cy="21.5" rx="5.3" ry="6"/>
         <circle class="pupil" cx="17.8" cy="22.6" r="2.5"/>
         <circle class="pupil" cx="32" cy="22.6" r="2.5"/>
       </g>
-      <ellipse class="mouth" cx="22.5" cy="33.4" rx="2.5" ry="3"/>
+      <ellipse class="mouth" cx="22.4" cy="33.4" rx="2.5" ry="3"/>
     </svg>`;
 
   // A block cursor with bracket jaws. The hem of the figure it chases is a
@@ -1195,11 +1202,12 @@ html[data-still] .sweep{display:none}
     const bliss = figure.querySelector(".sh-bliss");
     const pupils = [...figure.querySelectorAll(".pupil")];
     const peaks = [...figure.querySelectorAll(".peak")];
+    const tipShade = figure.querySelector(".tip-shade");
     // Where each point of the hem joins the body, read off its own path so a
     // redrawn hem cannot leave the ripple swinging from the wrong place.
     const roots = peaks.map((peak) => {
       const found = /M([\d.]+)[ ,]([\d.]+)h([\d.]+)/.exec(peak.getAttribute("d") || "");
-      return found ? [Number(found[1]) + Number(found[3]) / 2, Number(found[2])] : [22.5, 42.4];
+      return found ? [Number(found[1]) + Number(found[3]) / 2, Number(found[2])] : [22, 41.4];
     });
     const mouthO = figure.querySelector(".sh-o");
     const mouthLine = figure.querySelector(".sh-line");
@@ -1462,8 +1470,10 @@ html[data-still] .sweep{display:none}
         const wake = span(g.p, 0.18, 0.3) * Math.exp(-3.2 * Math.max(0, g.p - 0.18)) *
           Math.sin((g.p - 0.18) * 11 - i * 0.8) * g.a;
         const [rx, ry] = roots[i];
-        peak.setAttribute("transform", `translate(${rx} ${ry}) skewX(${(idle * 4 + wake * 9).toFixed(2)}) ` +
-          `scale(1 ${(1 + idle * 0.05 + wake * 0.16).toFixed(3)}) translate(${-rx} ${-ry})`);
+        const hang = `translate(${rx} ${ry}) skewX(${(idle * 4 + wake * 9).toFixed(2)}) ` +
+          `scale(1 ${(1 + idle * 0.05 + wake * 0.16).toFixed(3)}) translate(${-rx} ${-ry})`;
+        peak.setAttribute("transform", hang);
+        if (i === peaks.length - 1 && tipShade) tipShade.setAttribute("transform", hang);
       });
       shadow.style.opacity = ((0.55 + g.d * g.a * 0.12 + hop * 0.03) * shown * out).toFixed(3);
       shadow.style.transform = `translate(${(ghost.x - 48 + sway).toFixed(2)}px, ${floorY - 7}px) ` +
