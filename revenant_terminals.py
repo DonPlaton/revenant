@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,9 +78,13 @@ class Plan:
     #: How many jobs each command opens, in order, when that is neither one per
     #: command nor all in one. Commands in `overhead` open none.
     carries: tuple[int, ...] = ()
-    #: Seconds after the run starts before each command may go, so windows can
-    #: come up on a schedule: as the cards that stand for them land.
+    #: Seconds after `origin` before each command may go, so windows can come
+    #: up on a schedule: as the cards that stand for them land.
     delays: tuple[float, ...] = ()
+    #: The `time.monotonic()` the delays count from, which is when the caller was
+    #: asked rather than when the run got round to starting. 0 counts them from
+    #: the start of the run.
+    origin: float = 0.0
     #: What this plan actually does, which is not always what was asked for: a
     #: backend that cannot script tabs reports `windows` here and says so in the
     #: note, so the caller never claims to have opened tabs that do not exist.
@@ -157,6 +162,16 @@ WT_PACKAGES = (
 )
 
 
+#: The first Windows Terminal that takes --pos and --size (microsoft/terminal#13730,
+#: shipped in 1.17). An older one answers them with an error box and opens no
+#: tab, while its launcher still exits 0, so no fallback would ever run.
+WT_PLACES_FROM = (1, 17)
+#: Where Windows lists the packages installed for the user, one key per package,
+#: named after its full name: `Microsoft.WindowsTerminal_1.24.11911.0_x64__8wekyb3d8bbwe`.
+_PACKAGE_KEYS = (r"Software\Classes\Local Settings\Software\Microsoft\Windows"
+                 r"\CurrentVersion\AppModel\Repository\Packages")
+
+
 def windows_terminal_binary() -> str | None:
     """The wt.exe that can actually be started, or None.
 
@@ -179,9 +194,97 @@ def windows_terminal_binary() -> str | None:
     return shutil.which("wt.exe") or shutil.which("wt")
 
 
+def _newest(names: Iterable[str], family: str) -> tuple[int, ...] | None:
+    """The highest version among the full names of one package family's packages."""
+    name, _, publisher = family.partition("_")
+    found = []
+    for full in names:
+        parts = full.split("_")
+        if len(parts) >= 3 and parts[0] == name and parts[-1] == publisher:
+            try:
+                found.append(tuple(int(part) for part in parts[1].split(".")))
+            except ValueError:
+                continue
+    return max(found) if found else None
+
+
+def wt_version() -> tuple[int, ...] | None:
+    """The version of the package the `wt.exe` we start belongs to, or None when
+    it is not a package (a portable copy, or the bare alias): then there is no
+    telling."""
+    binary = windows_terminal_binary() or ""
+    family = next((package for package in WT_PACKAGES if package in binary), None)
+    if not WINDOWS or family is None:
+        return None
+    try:
+        import winreg
+
+        names = []
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _PACKAGE_KEYS) as key:
+            index = 0
+            while True:
+                try:
+                    names.append(winreg.EnumKey(key, index))
+                except OSError:
+                    break
+                index += 1
+    except OSError:
+        return None
+    return _newest(names, family)
+
+
+def wt_can_place() -> bool:
+    """Whether the Windows Terminal here is known to take --pos and --size."""
+    version = wt_version()
+    return version is not None and version[:2] >= WT_PLACES_FROM
+
+
+def display_scale(x: int, y: int) -> float | None:
+    """The scale Windows draws the display holding the physical point (x, y) at,
+    or None where that cannot be asked.
+
+    The page's devicePixelRatio carries its zoom as well, while Windows Terminal
+    sizes its cells by the display alone. Asked from a per-monitor aware thread,
+    since an unaware one is told 96 dpi whatever the display.
+    """
+    if not WINDOWS:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32, shcore = ctypes.WinDLL("user32"), ctypes.WinDLL("shcore")
+        user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+        user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+        user32.MonitorFromPoint.restype = ctypes.c_void_p
+        user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+        shcore.GetDpiForMonitor.argtypes = [ctypes.c_void_p, ctypes.c_int,
+                                            ctypes.POINTER(wintypes.UINT), ctypes.POINTER(wintypes.UINT)]
+        previous = user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))  # per monitor, v2
+        try:
+            monitor = user32.MonitorFromPoint(wintypes.POINT(int(x), int(y)), 2)  # the nearest
+            dpi_x, dpi_y = wintypes.UINT(), wintypes.UINT()
+            if not monitor or shcore.GetDpiForMonitor(monitor, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y)):
+                return None
+            return dpi_x.value / 96
+        finally:
+            if previous:
+                user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(previous))
+    except (AttributeError, OSError, ValueError, OverflowError):
+        return None
+
+
 # --------------------------------------------------------------------------- #
 # Placing windows where the deal put them
 # --------------------------------------------------------------------------- #
+
+#: Windows Terminal's default face, and its metrics in em: the advance of "0",
+#: which sets the cell's width, and ascent plus descent (no line gap), which
+#: sets its height. Read from the CascadiaMono.ttf the Terminal package ships;
+#: Cascadia Code and the NF builds share them.
+CASCADIA = "Cascadia Mono"
+CASCADIA_ADVANCE = 1200 / 2048
+CASCADIA_LINE = (1900 + 480) / 2048
 
 #: The fewest columns and rows worth placing a window at. An agent's interface
 #: wraps badly under 80 columns, and a window cut shorter than this is worse
@@ -244,7 +347,24 @@ class Room:
     bottom: int
 
 
-def _jsonc(text: str):
+def _blank_to(text: str, i: int) -> int:
+    """The first index from `i` on that is neither whitespace nor a comment."""
+    n = len(text)
+    while i < n:
+        if text[i] in " \t\r\n":
+            i += 1
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = n if end < 0 else end
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+        else:
+            break
+    return i
+
+
+def _jsonc(text: str) -> object:
     """Parse the JSON with comments and trailing commas that Windows Terminal
     writes and the json module refuses."""
     out: list[str] = []
@@ -264,10 +384,9 @@ def _jsonc(text: str):
             end = text.find("*/", i + 2)
             i = n if end < 0 else end + 2
         elif c == ",":
-            # A comma with nothing after it but a closing bracket is dropped.
-            j = i + 1
-            while j < n and text[j] in " \t\r\n":
-                j += 1
+            # A comma with nothing after it but a closing bracket is dropped,
+            # comments included: the last entry is the one people comment out.
+            j = _blank_to(text, i + 1)
             if not (j < n and text[j] in "}]"):
                 out.append(c)
             i += 1
@@ -302,6 +421,8 @@ def _padding(value: object) -> tuple[float, float, float, float]:
         parts = [float(p) for p in str(value).split(",")]
     except ValueError:
         parts = [8.0]
+    if not all(math.isfinite(part) and 0 <= part <= 1000 for part in parts):
+        parts = [8.0]
     if len(parts) == 1:
         parts *= 4
     elif len(parts) == 2:
@@ -315,13 +436,15 @@ def wt_cells(settings: dict | None, scale: float) -> Cells | None:
     """How big a Windows Terminal window comes out at `scale`, or None.
 
     None when the user has said where windows go (a launch mode, a position,
-    centring) or set something the estimate cannot follow. The cell is worked
-    out from the font size the way Cascadia Mono measures, rounded up, so a
-    window never comes out larger than the room it was given.
+    centring) or set something the estimate cannot follow, which includes any
+    font but Cascadia: the cell is worked out from its metrics and rounded to
+    whole pixels as Windows Terminal rounds it, so the window comes out the size
+    of the room it was given and no larger.
     """
     if not isinstance(settings, dict) or not 0.5 <= scale <= 4:
         return None
-    if str(settings.get("launchMode", "default")) not in ("default", "focus"):
+    # "focus" and "maximizedFocus" hide the tab row the cards are thrown into.
+    if str(settings.get("launchMode", "default")) != "default":
         return None
     if settings.get("initialPosition") or settings.get("centerOnLaunch"):
         return None
@@ -338,13 +461,19 @@ def wt_cells(settings: dict | None, scale: float) -> Cells | None:
     wanted = str(settings.get("defaultProfile", "")).lower()
     chosen = next((p for p in listed if isinstance(p, dict) and str(p.get("guid", "")).lower() == wanted), {})
 
-    size = None
+    size = face = None
     for source in (chosen, defaults):
         font = source.get("font") if isinstance(source.get("font"), dict) else {}
         if "cellWidth" in font or "cellHeight" in font:
             return None
         if size is None:
             size = font.get("size", source.get("fontSize"))
+        if face is None:
+            face = font.get("face", source.get("fontFace"))
+    # Only the first face of a fallback list sets the cell.
+    primary = str(face if face is not None else CASCADIA).split(",")[0].strip().lower()
+    if not primary.startswith("cascadia"):
+        return None
     try:
         points = float(size) if size is not None else 12.0
     except (TypeError, ValueError):
@@ -352,7 +481,7 @@ def wt_cells(settings: dict | None, scale: float) -> Cells | None:
     if not 4 <= points <= 72:
         return None
 
-    def pick(key: str, fallback):
+    def pick(key: str, fallback: object) -> object:
         for source in (chosen, defaults):
             if key in source:
                 return source[key]
@@ -364,12 +493,12 @@ def wt_cells(settings: dict | None, scale: float) -> Cells | None:
     try:
         cols = int(settings.get("initialCols", 120))
         rows = int(settings.get("initialRows", 30))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         cols, rows = 120, 30
     return Cells(
-        # Rounded up, but not past a whole pixel by a float's last digit.
-        width=math.ceil(0.6 * pixels - 1e-6),
-        height=1.15 * pixels,
+        # Windows Terminal rounds each to the nearest pixel, halves up.
+        width=math.floor(CASCADIA_ADVANCE * pixels + 0.5),
+        height=math.floor(CASCADIA_LINE * pixels + 0.5),
         chrome_w=(left + right + scrollbar + 2) * scale,
         chrome_h=(top + bottom + 46) * scale,
         strip=36 * scale,
@@ -419,6 +548,10 @@ class Terminal:
     #: Layouts this backend can actually produce. A window per session is the one
     #: thing every terminal in existence can do, so it is the floor.
     layouts: tuple[str, ...] = (LAYOUT_WINDOWS,)
+    #: Milliseconds from the call until its window shows, so a caller timing the
+    #: windows to something on screen can start this much early. A guess on the
+    #: late side unless a backend says otherwise.
+    lead_ms: int = 400
 
     @property
     def tabs(self) -> bool:
@@ -458,6 +591,8 @@ class WindowsTerminal(Terminal):
     label = "Windows Terminal"
     platforms = ("nt",)
     layouts = (LAYOUT_TABS, LAYOUT_WINDOWS)
+    #: Filmed at about 330 ms from the call to its first frame.
+    lead_ms = 250
 
     def available(self) -> bool:
         return self.supported() and bool(windows_terminal_binary())
@@ -827,6 +962,8 @@ class Tmux(Terminal):
     #: tmux windows are the tabs, and it has no windows of its own to open: the
     #: emulator hosting it owns those. Asking for windows here gets tabs and a note.
     layouts = (LAYOUT_TABS,)
+    #: Its windows are made inside a server that is already up.
+    lead_ms = 0
 
     def available(self) -> bool:
         return bool(shutil.which("tmux"))
@@ -1010,7 +1147,7 @@ def outcome(plan: Plan) -> Outcome:
     landed = [False] * len(plan.commands)
     failures: list[str] = []
     started: list[tuple[int, subprocess.Popen]] = []
-    begun = time.monotonic()
+    begun = plan.origin or time.monotonic()
     for index, argv in enumerate(plan.commands):
         cwd = plan.directory(index) or None
         if index < len(plan.delays):

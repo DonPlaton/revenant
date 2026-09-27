@@ -986,6 +986,7 @@ def launch(
     place: terminals.Spot | None = None,
     start_in: float = 0.0,
     stagger: float = 0.0,
+    origin: float = 0.0,
 ) -> int:
     """Open the selected sessions in a terminal.
 
@@ -993,7 +994,9 @@ def launch(
     a caller can tell them from the ones that failed or were held back. `place`
     puts the window where the caller drew it, `start_in` holds the launch back
     so it comes up as the cards land, and `stagger` spaces the calls after the
-    first. A fallback terminal gets none of it: it is late already, and was
+    first. Both count from `origin`, a `time.monotonic()` reading, when the
+    caller has one from before the sessions were checked; otherwise from the
+    launch. A fallback terminal gets none of it: it is late already, and was
     never drawn.
     """
     stream = stream if stream is not None else sys.stdout
@@ -1023,7 +1026,8 @@ def launch(
         usable, terminal=terminal, layout=layout, window=window, profile=profile, place=place
     )
     if start_in > 0 or stagger > 0:
-        plan = replace(plan, delays=tuple(start_in + index * stagger for index in range(len(plan.commands))))
+        plan = replace(plan, delays=tuple(start_in + index * stagger for index in range(len(plan.commands))),
+                       origin=origin)
     if dry_run:
         print(plan.render(), file=stream)
         return 0

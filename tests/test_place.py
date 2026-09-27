@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -20,7 +21,7 @@ import revenant  # noqa: E402
 import revenant_gui as gui  # noqa: E402
 import revenant_terminals as terminals  # noqa: E402
 
-from test_gui import ALPHA, _post, served  # noqa: E402,F401
+from test_gui import ALPHA, _post, _transcript, served  # noqa: E402,F401
 
 SCREEN = (0, 0, 1920, 1020)
 
@@ -50,6 +51,52 @@ def test_settings_with_comments_and_trailing_commas_are_read() -> None:
     assert data["profiles"]["list"][0]["commandline"] == "cmd /c echo // not a comment, ]"
 
 
+def test_a_comma_before_a_commented_out_entry_is_dropped() -> None:
+    """The last entry is the one people comment out, and Terminal reads that fine."""
+    text = """{ "actions": [
+        { "command": "find", "keys": "ctrl+shift+f" },
+        // { "command": "paste", "keys": "ctrl+v" }
+    ], "b": { "c": 1, /* gone */ }, }"""
+    assert terminals._jsonc(text) == {"actions": [{"command": "find", "keys": "ctrl+shift+f"}], "b": {"c": 1}}
+
+
+def test_the_cell_is_rounded_the_way_windows_terminal_rounds_it() -> None:
+    """Cascadia's "0" is 1200/2048 em and ascent plus descent 2380/2048 em, each
+    rounded to the nearest pixel: at 100% an unrounded 18.4 px row made 30 rows
+    come out 18 px taller than the room they were fitted into."""
+    one = _cells(1.0)
+    assert (one.width, one.height) == (9, 19)
+    half = _cells(1.5)
+    assert (half.width, half.height) == (14, 28)
+
+
+@pytest.mark.parametrize("face, placed", [
+    ("Cascadia Mono", True),
+    ("Cascadia Code NF", True),
+    ("cascadia mono, Consolas", True),
+    ("JetBrains Mono", False),
+    ("Consolas, Cascadia Mono", False),
+])
+def test_only_cascadias_cells_are_predicted(face: str, placed: bool) -> None:
+    """Another face has its own metrics, and a guess at them opens a window
+    larger than the room. The face set on the profile is the one that counts."""
+    modern = {"profiles": {"defaults": {"font": {"face": face}}}}
+    legacy = {"profiles": {"defaults": {"fontFace": face}}}
+    assert (terminals.wt_cells(modern, 1.25) is not None) is placed
+    assert (terminals.wt_cells(legacy, 1.25) is not None) is placed
+    shadowed = {"defaultProfile": "{a}", "profiles": {"defaults": {"font": {"face": "Cascadia Mono"}},
+                                                     "list": [{"guid": "{a}", "font": {"face": face}}]}}
+    assert (terminals.wt_cells(shadowed, 1.25) is not None) is placed
+
+
+def test_numbers_that_do_not_read_fall_back_to_the_defaults() -> None:
+    """Parsed from JSON, 1e999 is infinity and "nan" a float: neither may reach int()."""
+    odd = terminals.wt_cells({"initialCols": 1e999, "initialRows": float("nan"),
+                              "profiles": {"defaults": {"padding": "nan"}}}, 1.0)
+    assert odd is not None and (odd.cols, odd.rows) == (120, 30)
+    assert odd.chrome_w == _cells(1.0).chrome_w
+
+
 def test_the_default_cell_is_what_was_measured() -> None:
     """Cascadia Mono 12 pt at 125%: 12 px wide, about 23 px tall, measured on a
     real window at 100 x 30 and 90 x 26 cells."""
@@ -63,6 +110,8 @@ def test_the_default_cell_is_what_was_measured() -> None:
 @pytest.mark.parametrize("settings", [
     {"launchMode": "maximized"},
     {"launchMode": "fullscreen"},
+    {"launchMode": "focus"},
+    {"launchMode": "maximizedFocus"},
     {"initialPosition": "100,100"},
     {"centerOnLaunch": True},
     {"showTabsInTitlebar": False},
@@ -87,7 +136,7 @@ def test_the_default_profiles_font_wins_over_the_defaults() -> None:
             "list": [{"guid": "{A}", "font": {"size": 20}}, {"guid": "{b}", "fontSize": 14}],
         },
     }
-    assert _cells(1.0, **settings).width == 12  # 14 pt at 96 dpi: 18.7 px, 0.6 of it rounded up
+    assert _cells(1.0, **settings).width == 11  # 14 pt at 96 dpi: 18.7 px, 1200/2048 of it is 10.9
     assert _cells(1.0, profiles={"defaults": {"font": {"size": 10}}}).width == 8
 
 
@@ -178,6 +227,16 @@ def test_a_plan_waits_for_its_moment() -> None:
     assert time.monotonic() - began >= 0.3
 
 
+def test_a_plan_counts_its_moment_from_when_it_was_asked() -> None:
+    """Time spent checking the sessions before the run is not added on top."""
+    asked = time.monotonic() - 1.0
+    plan = terminals.Plan("test", [[sys.executable, "-c", "pass"]], delays=(0.3,), origin=asked)
+    began = time.monotonic()
+    opened, _ = terminals.run(plan)
+    assert opened == 1
+    assert time.monotonic() - began < terminals.EARLY_EXIT_GRACE + 0.25
+
+
 def test_launch_holds_every_call_back_and_hands_the_place_on(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict = {}
 
@@ -187,6 +246,7 @@ def test_launch_holds_every_call_back_and_hands_the_place_on(monkeypatch: pytest
 
     def run(plan):
         seen["delays"] = plan.delays
+        seen["origin"] = plan.origin
         return terminals.Ran(len(plan.commands), "", (True,) * len(plan.commands))
 
     monkeypatch.setattr(revenant, "plan_launch", plan_launch)
@@ -196,8 +256,9 @@ def test_launch_holds_every_call_back_and_hands_the_place_on(monkeypatch: pytest
     assert revenant.launch([session], place=spot, start_in=0.5, stream=io.StringIO()) == 0
     assert seen["place"] is spot
     assert seen["delays"] == (0.5, 0.5)
-    revenant.launch([session], start_in=0.5, stagger=0.1, stream=io.StringIO())
+    revenant.launch([session], start_in=0.5, stagger=0.1, stream=io.StringIO(), origin=123.0)
     assert seen["delays"] == pytest.approx((0.5, 0.6))
+    assert seen["origin"] == 123.0
 
 
 # --------------------------------------------------------------------------- #
@@ -211,6 +272,8 @@ def windows_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
     """Windows Terminal with its settings as shipped, on any platform."""
     monkeypatch.setattr(terminals, "choose", lambda *a, **k: terminals.WindowsTerminal())
     monkeypatch.setattr(terminals, "wt_settings", lambda: {})
+    monkeypatch.setattr(terminals, "wt_can_place", lambda: True)
+    monkeypatch.setattr(terminals, "display_scale", lambda x, y: None)
 
 
 def test_the_page_is_told_where_the_window_will_open(served, windows_terminal) -> None:
@@ -236,6 +299,8 @@ def test_placing_asks_for_the_token(served, windows_terminal) -> None:
     {"layout": "tabs", "room": {**ROOM, "scale": "big"}},
     {"layout": "tabs", "room": {**ROOM, "screen": [0, 0, 1536]}},
     {"layout": "tabs", "room": {**ROOM, "top": float("inf")}},
+    {"layout": "tabs", "room": {**ROOM, "scale": 4, "screen": [0, 0, 1e308, 1e308]}},
+    {"layout": "tabs", "room": {**ROOM, "scale": 40}},
     {"layout": "tabs", "room": "everywhere"},
     {"layout": "tabs"},
 ])
@@ -243,6 +308,38 @@ def test_no_place_is_an_empty_answer_not_an_error(served, windows_terminal, payl
     backend, base = served
     status, body = _post(f"{base}/api/place?t={backend.token}", payload)
     assert status == 200 and json.loads(body)["spots"] == []
+
+
+def test_a_terminal_too_old_for_pos_is_not_placed(served, windows_terminal, monkeypatch) -> None:
+    """Before 1.17 --pos is an error box and no tab, with the launcher exiting 0."""
+    monkeypatch.setattr(terminals, "wt_can_place", lambda: False)
+    backend, base = served
+    _, body = _post(f"{base}/api/place?t={backend.token}", {"layout": "tabs", "room": ROOM})
+    assert json.loads(body)["spots"] == []
+
+
+def test_the_version_is_read_from_the_package_names() -> None:
+    names = [
+        "Microsoft.WindowsTerminal_1.16.10262.0_x64__8wekyb3d8bbwe",
+        "Microsoft.WindowsTerminal_1.24.11911.0_x64__8wekyb3d8bbwe",
+        "Microsoft.WindowsTerminalPreview_1.25.1.0_x64__8wekyb3d8bbwe",
+        "Microsoft.WindowsTerminal_garbage_x64__8wekyb3d8bbwe",
+        "Contoso.WindowsTerminal_9.0.0.0_x64__other",
+    ]
+    assert terminals._newest(names, "Microsoft.WindowsTerminal_8wekyb3d8bbwe") == (1, 24, 11911, 0)
+    assert terminals._newest(names, "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe") == (1, 25, 1, 0)
+    assert terminals._newest([], "Microsoft.WindowsTerminal_8wekyb3d8bbwe") is None
+
+
+def test_a_zoomed_page_is_not_placed(served, windows_terminal, monkeypatch) -> None:
+    """At 90% on a 125% display the page says 1.125, and cells worked out from
+    that come out 10% smaller than the ones Terminal draws."""
+    monkeypatch.setattr(terminals, "display_scale", lambda x, y: 1.25)
+    backend, base = served
+    _, body = _post(f"{base}/api/place?t={backend.token}", {"layout": "tabs", "room": {**ROOM, "scale": 1.125}})
+    assert json.loads(body)["spots"] == []
+    _, body = _post(f"{base}/api/place?t={backend.token}", {"layout": "tabs", "room": ROOM})
+    assert len(json.loads(body)["spots"]) == 1
 
 
 def test_only_windows_terminal_is_placed(served, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -287,6 +384,65 @@ def test_a_room_or_a_wait_that_does_not_read_still_launches(served, windows_term
     assert first["place"] is None and first["start_in"] == 0 and first["stagger"] == 0
     assert second["start_in"] <= gui.MAX_WAIT_MS / 1000
     assert second["stagger"] == gui.MAX_STAGGER_MS / 1000
+
+
+def test_a_room_that_breaks_the_placing_still_launches(served, windows_terminal, launched, monkeypatch) -> None:
+    def broken(*_):
+        raise OverflowError("cannot convert float infinity to integer")
+
+    monkeypatch.setattr(terminals, "wt_cells", broken)
+    backend, base = served
+    _, body = _post(f"{base}/api/revive?t={backend.token}",
+                    {"ids": [ALPHA], "days": 7, "layout": "tabs", "room": ROOM})
+    assert json.loads(body)["raised"] == [ALPHA]
+    assert launched[0]["place"] is None
+
+
+def test_the_schedule_counts_from_the_request(served, launched) -> None:
+    backend, base = served
+    before = time.monotonic()
+    _post(f"{base}/api/revive?t={backend.token}", {"ids": [ALPHA], "days": 7, "wait": 800})
+    (kwargs,) = launched
+    assert kwargs["start_in"] == pytest.approx(0.8)
+    assert before <= kwargs["origin"] <= time.monotonic()
+
+
+def test_windows_are_never_spread_past_the_pages_patience(served, launched, monkeypatch) -> None:
+    """200 windows at the widest gap would take over a minute, past the moment
+    the page gives up, re-enables REVIVE and invites a second launch."""
+    backend, base = served
+    others = [f"2222222{i}-2222-2222-2222-222222222222" for i in range(3)]
+    for index, sid in enumerate(others):
+        _transcript(backend.root, f"D--Coding-b{index}", sid, rf"D:\Coding\b{index}", age_hours=2)
+    backend.invalidate()
+    monkeypatch.setattr(gui, "MAX_SPREAD_MS", 300.0)
+    _post(f"{base}/api/revive?t={backend.token}",
+          {"ids": [ALPHA, *others], "days": 7, "layout": "windows", "stagger": 400})
+    (kwargs,) = launched
+    assert kwargs["stagger"] == pytest.approx(0.1)
+    assert gui.MAX_WAIT_MS + gui.MAX_SPREAD_MS < 60_000
+
+
+def test_closing_the_app_waits_for_a_revival_still_starting(served, monkeypatch) -> None:
+    """The service's threads die with the process, and with them the rest of a
+    schedule, so the app does not exit while a revival is still under way."""
+    backend, _ = served
+    going, release = threading.Event(), threading.Event()
+
+    def slow(sessions, **kwargs):
+        going.set()
+        release.wait(5)
+        kwargs["landed"].extend(sessions)
+        return 0
+
+    monkeypatch.setattr(revenant, "launch", slow)
+    worker = threading.Thread(target=lambda: backend.revive([ALPHA], days=7))
+    worker.start()
+    assert going.wait(5)
+    assert backend.settle(timeout=0.1) is False
+    release.set()
+    assert backend.settle(timeout=5) is True
+    worker.join(5)
 
 
 def test_every_layout_says_how_long_its_windows_take(served) -> None:

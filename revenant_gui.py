@@ -55,14 +55,16 @@ MAX_BODY_BYTES = 256 * 1024
 #: Sessions one request may name. More than this is almost certainly a mistake,
 #: and the page says which ones were left behind.
 MAX_IDS = 200
-#: The longest a revival may be held back to meet its cards, and the widest gap
-#: between two of its windows. More is cut to these.
+#: The longest a revival may be held back to meet its cards, the widest gap
+#: between two of its windows, and the longest its windows may be spread over.
+#: More is cut to these, so the whole schedule is over well inside the minute
+#: the page waits for an answer.
 MAX_WAIT_MS = 5000.0
 MAX_STAGGER_MS = 400.0
-#: How long after the call a terminal's window shows, so the page can start the
-#: launch this much before the cards land. Windows Terminal was filmed at about
-#: 330 ms from the call to its first frame; the rest are a guess on the late side.
-LEAD_MS = {"wt": 250, "tmux": 0, "": 400}
+MAX_SPREAD_MS = 20000.0
+#: How long closing the app waits for a revival that is still starting its
+#: terminals: the longest schedule, and time for a fallback terminal after it.
+SETTLE_SECONDS = (MAX_WAIT_MS + MAX_SPREAD_MS) / 1000 + 15
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -91,6 +93,10 @@ class Backend:
         self._cache: tuple[tuple[float, str], float, list[revenant.Session]] | None = None
         self._layouts: dict | None = None
         self.last_seen = time.monotonic()
+        # Revivals still starting their terminals. The service's threads die
+        # with the app, so closing it mid-schedule would cut the rest off.
+        self._reviving = 0
+        self._settled = threading.Condition()
 
     # -- data ------------------------------------------------------------- #
 
@@ -150,7 +156,7 @@ class Backend:
                     "note": terminal.demoted(wanted),
                     # How long its windows take to show after the call, so the
                     # page can ask for them to arrive as the cards land.
-                    "lead": LEAD_MS.get(terminal.key, LEAD_MS[""]),
+                    "lead": terminal.lead_ms,
                 }
             self._layouts = found
         return self._layouts
@@ -215,17 +221,28 @@ class Backend:
             left, top, bottom = float(room["left"]), float(room["top"]), float(room["bottom"])
         except (KeyError, TypeError, ValueError):
             return None
-        if len(screen) != 4 or not all(math.isfinite(value) for value in (scale, left, top, bottom, *screen)):
+        if len(screen) != 4 or not 0.5 <= scale <= 4:
+            return None
+        # Anything past a million pixels is not a screen, and would overflow on
+        # its way to one.
+        if not all(math.isfinite(value) and abs(value) < 1e6 for value in (left, top, bottom, *screen)):
             return None
         terminal = terminals.choose(layout=layout)
-        if terminal.key != "wt" or terminal.settle(layout) != layout:
-            return None
-        cells = terminals.wt_cells(terminals.wt_settings(), scale)
-        if cells is None:
+        if terminal.key != "wt" or terminal.settle(layout) != layout or not terminals.wt_can_place():
             return None
 
         def px(value: float) -> int:
             return round(value * scale)
+
+        # A zoomed page's pixels are not the screen's, and Windows Terminal sizes
+        # its cells by the display, not the page: the window would come out
+        # somewhere other than where the cards were thrown.
+        actual = terminals.display_scale(px(left), px(top))
+        if actual is not None and abs(actual - scale) > 0.01:
+            return None
+        cells = terminals.wt_cells(terminals.wt_settings(), scale)
+        if cells is None:
+            return None
 
         spot = terminals.place(terminals.Room(tuple(px(v) for v in screen), px(left), px(top), px(bottom)), cells)
         return (spot, cells, scale) if spot else None
@@ -260,6 +277,29 @@ class Backend:
         the page drew it. `wait_ms` from now the first is started, so it comes
         up as the cards land, and `stagger_ms` spaces the rest."""
         arrived = time.monotonic()
+        with self._settled:
+            self._reviving += 1
+        try:
+            return self._revive(ids, days=days, which=which, layout=layout, room=room,
+                                wait_ms=wait_ms, stagger_ms=stagger_ms, arrived=arrived)
+        finally:
+            with self._settled:
+                self._reviving -= 1
+                self._settled.notify_all()
+
+    def settle(self, timeout: float = SETTLE_SECONDS) -> bool:
+        """Wait for revivals still starting their terminals. True when none is left."""
+        deadline = time.monotonic() + timeout
+        with self._settled:
+            while self._reviving:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return False
+                self._settled.wait(left)
+        return True
+
+    def _revive(self, ids: list[str], *, days: float, which: str, layout: str, room: object,
+                wait_ms: float, stagger_ms: float, arrived: float) -> dict:
         chosen = self._by_id(ids, days=days, which=which)
         if not chosen:
             return {"ok": False, "message": "Those sessions are no longer on disk.", "count": 0, "raised": []}
@@ -283,11 +323,20 @@ class Backend:
         # no reason to refuse the rescue: fall back to the default and open them.
         wanted = layout if layout in terminals.LAYOUTS else terminals.DEFAULT_LAYOUT
         came_up: list[revenant.Session] = []
-        found = self._spot(wanted, room) if room else None
-        start_in = max(0.0, arrived + min(max(wait_ms, 0.0), MAX_WAIT_MS) / 1000 - time.monotonic())
+        try:
+            found = self._spot(wanted, room) if room else None
+        except Exception:  # noqa: BLE001 - where the window goes is a wish, never a condition
+            found = None
+        # Counted from when the request came in, not from when the launch gets
+        # round to starting, so the time spent checking the sessions is not
+        # added on top.
+        wait = min(max(wait_ms, 0.0), MAX_WAIT_MS)
+        stagger = min(max(stagger_ms, 0.0), MAX_STAGGER_MS)
+        if len(placed) > 1:
+            stagger = min(stagger, MAX_SPREAD_MS / (len(placed) - 1))
         code = revenant.launch(chosen, layout=wanted, stream=sink, landed=came_up,
-                               place=found[0] if found else None, start_in=start_in,
-                               stagger=min(max(stagger_ms, 0.0), MAX_STAGGER_MS) / 1000)
+                               place=found[0] if found else None, start_in=wait / 1000,
+                               stagger=stagger / 1000, origin=arrived)
         self.invalidate()  # a revived session becomes live as soon as it registers
         note = [line for line in sink.getvalue().strip().splitlines() if line]
         message = " ".join(note[-2:]) if note else ""
@@ -501,10 +550,11 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/revive":
             # Where and when are the page's wish, never a condition: a room or a
             # timing that does not read is ignored and the sessions still open.
+            # Read here, bounded in revive(), which is where the limits live.
             result = self._guarded(lambda: self.backend.revive(
                 ids, days=days, which=which, layout=layout, room=payload.get("room"),
-                wait_ms=_as_float(payload.get("wait"), 0.0, low=0.0, high=MAX_WAIT_MS),
-                stagger_ms=_as_float(payload.get("stagger"), 0.0, low=0.0, high=MAX_STAGGER_MS),
+                wait_ms=_as_float(payload.get("wait"), 0.0, low=0.0, high=math.inf),
+                stagger_ms=_as_float(payload.get("stagger"), 0.0, low=0.0, high=math.inf),
             ))
             if len(every) > MAX_IDS:
                 result["message"] = (f"{result.get('message', '')} Only the first {MAX_IDS} were sent; "
@@ -617,6 +667,7 @@ def run_gui(*, agent: Agent = CLAUDE_CODE, root: str | None = None) -> int:
             webview.start(_bind, window)
         finally:
             server.shutdown()
+            backend.settle()
         return 0
 
     binary = _browser_binary()
@@ -641,6 +692,7 @@ def run_gui(*, agent: Agent = CLAUDE_CODE, root: str | None = None) -> int:
             server.shutdown()
             if process.poll() is None:
                 process.terminate()
+            backend.settle()
         return 0
 
     webbrowser.open(url)
@@ -651,6 +703,7 @@ def run_gui(*, agent: Agent = CLAUDE_CODE, root: str | None = None) -> int:
         pass
     finally:
         server.shutdown()
+        backend.settle()
     return 0
 
 
