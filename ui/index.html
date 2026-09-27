@@ -1522,7 +1522,13 @@ html[data-still] .sweep{display:none}
     // The sheet below the waist, bent `drag` units sideways and flared `flare`
     // units out at the hem, with its light and shade bent along with it.
     const n2 = (v) => v.toFixed(2);
+    // Rewriting a path makes the browser parse its geometry again, so a sheet
+    // that has not moved since the last frame is left as it is.
+    let draped = "";
     function drape(drag, flare) {
+      const key = `${n2(drag)} ${n2(flare)}`;
+      if (key === draped) return;
+      draped = key;
       const l = drag - flare, r = drag + flare;
       if (cloth.body) {
         cloth.body.setAttribute("d", `M${n2(4 + l)} 42C${n2(4 + l * 0.3)} 35 4 28 4 21C4 10.5 12 2.5 22 2.5` +
@@ -1887,9 +1893,6 @@ html[data-still] .sweep{display:none}
     const LEAD = Math.max(0, Number(opts.lead) || 0);
     const firstAt = LANDED * PACE - LEAD;
     const launchAt = Math.max(T.launch, (firstAt - ASK_AHEAD) / PACE);
-    // Windows of their own are asked for one after another. Started all at
-    // once, ten of them held even the first back by over a second, filmed.
-    const STAGGER = LAYOUT === "tabs" ? 0 : 110;
 
     // Moves the window the cards are dealt into to where the real one will open,
     // given in stage pixels. Too late once the window is on show, and then the
@@ -1954,10 +1957,9 @@ html[data-still] .sweep{display:none}
       // in stage pixels: right of the figure and its notes, inside the stage.
       // The deck may be covered: it is empty by the time a window comes up.
       room: { right: ox + (ghost.x + 96) * k + 12, top: 8, bottom: H - 8 - 40 },
-      // How long from now until the first terminal should be started, and how
-      // far apart the rest go; no waiting once the scene is gone.
+      // How long from now until the first terminal should be started; no
+      // waiting once the scene is gone.
       wait: () => (done ? 0 : Math.max(0, began + firstAt - performance.now())),
-      stagger: () => (done ? 0 : STAGGER),
       // A failed launch fades everything out from where it stands.
       fail() {
         fadeFrom = Math.min(fadeFrom, clock(performance.now()));
@@ -2067,9 +2069,8 @@ html[data-still] .sweep{display:none}
       fail: () => { if (show) show.fail(); },
       stop: () => { if (show) show.stop(); },
       // What the revival carries so its window opens where, and when, the cards
-      // went: the room it was placed in, the wait before the launch, and the
-      // gap between windows of their own.
-      wish: () => ({ room, wait: Math.round(show ? show.wait() : 0), stagger: show ? show.stagger() : 0 }),
+      // went: the room it was placed in and the wait before the launch.
+      wish: () => ({ room, wait: Math.round(show ? show.wait() : 0) }),
     };
   }
 
@@ -2089,6 +2090,10 @@ html[data-still] .sweep{display:none}
   const STAMP_SPREAD = 600;
   const STAMP_SETTLE = 800;
   const stampEvery = (count) => (count > 1 ? Math.min(90, STAMP_SPREAD / (count - 1)) : 0);
+  // Windows of their own are asked for one after another, dealt or stamped,
+  // and after an Escape too. Started all at once, ten of them held even the
+  // first back by over a second, filmed.
+  const WINDOW_GAP = 110;
 
   // The lap a revival earns is owed until the window is looked at again, which
   // is after the new terminals, not behind them.
@@ -2115,7 +2120,7 @@ html[data-still] .sweep{display:none}
 
     // What goes out is what was on screen at the click: the ruler, the agent
     // tab or the layout can all change during the wait.
-    const sent = { ids, days: stop().days, agent, layout };
+    const sent = { ids, days: stop().days, agent, layout, stagger: drawn(layout) === "tabs" ? 0 : WINDOW_GAP };
     const every = stampEvery(ids.length);
     // More than five are dealt instead of stamped: past five, a column of stamps reads as a list.
     const dealt = ids.length >= SHUFFLE_FROM && !stillness();

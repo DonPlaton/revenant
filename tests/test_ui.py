@@ -274,7 +274,22 @@ def test_a_dealt_revival_launches_as_the_cards_land(page: str) -> None:
     dealer = _dealer(page)
     assert "onLaunch: resolve," in dealer
     assert "lead: (opens[drawn(layout)] || {}).lead," in dealer
-    assert "wish: () => ({ room, wait: Math.round(show ? show.wait() : 0), stagger: show ? show.stagger() : 0 })," in dealer
+    assert "wish: () => ({ room, wait: Math.round(show ? show.wait() : 0) })," in dealer
+
+
+def test_windows_of_their_own_are_spaced_however_the_revival_goes(page: str) -> None:
+    """The gap was the scene's, so an Escape, a revival of five or fewer, or
+    reduced motion sent every window at once again: the burst that held even
+    the first one back by over a second."""
+    assert "const WINDOW_GAP = 110;" in page
+    assert 'const sent = { ids, days: stop().days, agent, layout, stagger: drawn(layout) === "tabs" ? 0 : WINDOW_GAP };' in page
+    engine = page.split("  const SHUFFLE_FROM = 6;", 1)[1].split("  // Lays the stage over the register", 1)[0]
+    assert "STAGGER" not in engine and "stagger: () =>" not in engine, "the scene no longer decides the gap"
+
+
+def test_the_sheet_is_not_rewritten_while_it_hangs_still(page: str) -> None:
+    drape = page.split("    function drape(drag, flare) {", 1)[1].split("\n    }\n", 1)[0]
+    assert "if (key === draped) return;" in drape.split("setAttribute", 1)[0]
 
 
 def test_a_scene_without_frames_still_lets_the_revival_through(page: str) -> None:
@@ -350,7 +365,7 @@ def test_the_request_carries_what_was_on_screen_at_the_click(page: str) -> None:
     """The ruler, the agent tab and the layout can all change during the wait;
     the deal draws the layout of the click, so that is the one that is sent."""
     body = _revive_handler(page)
-    captured = body.index("const sent = { ids, days: stop().days, agent, layout };")
+    captured = body.index("const sent = { ids, days: stop().days, agent, layout, stagger:")
     assert captured < body.index("await Promise.race([show ? show.launch")
     assert "body: JSON.stringify(show ? { ...sent, ...show.wish() } : sent)," in body
 
@@ -506,7 +521,6 @@ out.frame = parse(frame);
 out.cards = made.filter((el) => el.className === "sh-card").map((el) => parse(el).map((v, i) => v + (i ? 26 : 35)));
 const own = make("windows", 250);
 out.windows = own.aim(spot, 36);
-out.gaps = [tabs.stagger(), own.stagger()];
 const late = make("tabs", 250);
 now += 3200;
 out.late = late.aim(spot, 36);
@@ -536,7 +550,6 @@ def test_the_cards_are_thrown_into_where_the_real_window_opens(page: str, tmp_pa
     assert seen["room"]["right"] < 420, "the window starts clear of the figure"
     assert seen["aimed"] is True and seen["again"] is False
     assert seen["windows"] is False and seen["late"] is False
-    assert seen["gaps"] == [0, 110], "one call for tabs; windows one after another"
     x, y = seen["frame"]
     assert (x, y) == (420, 8)
     assert len(seen["cards"]) == 10
@@ -783,8 +796,12 @@ def test_the_figure_rises_out_of_grave_mist(page: str, tmp_path) -> None:
     ran = subprocess.run([node, str(script)], capture_output=True, text=True)
     assert ran.returncode == 0, ran.stderr.strip()
     seen = json.loads(ran.stdout)
-    # Behind the figure, in front of it, and under every card.
+    # Behind the figure and in front of it. The cards gathering from the rows
+    # pass behind both on purpose, so none flies across its face; dealt cards
+    # go over everything.
     assert seen["order"]["mist"] < seen["order"]["figure"] < seen["order"]["lastMist"] < seen["order"]["card"]
+    layers = {name: int(z) for name, z in re.findall(r"\.sh-(ghost|mist\.sh-near)\{[^}]*z-index:(\d+)", page)}
+    assert 20 + 12 < layers["ghost"] < layers["mist.sh-near"] < 60
     body_width = 36 * 150 / 58
     banks = [w for w in seen["widths"] if w > 200]
     assert len(banks) >= 4 and min(banks) > 2 * body_width, "every bank is wider than the figure"
