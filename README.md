@@ -340,7 +340,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-425 tests, no network, no real session touched, no terminal opened. Everything runs against a
+448 tests, no network, no real session touched, no terminal opened. Everything runs against a
 synthetic config directory in `tmp_path`, and a test that tries to start anything but Python or
 node fails. They cover both agents' file formats, session naming, live process
 detection and id reuse, the refusal to relaunch a running session, the argv of all fourteen
@@ -376,12 +376,13 @@ and the figure rises out of the floor through grave mist to shuffle them instead
 clears the mist, and the mist stays on the ground under it. Their marks lift off the rows
 and fold into a deck of small terminals, which it riffles with its eyes shut, nodding along with
 its mouth in an O, then deals into one window or several, whichever you picked, in the order they
-will open, smiling. In Windows Terminal the window of tabs is drawn where it will really open,
-beside the figure, and the cards land in the tabs it will have; the terminal comes up in that
-place as the last one lands. It plays at half speed, because at full speed the riffle is over
-before you have found it. The terminals are started as the last card lands, about five seconds
-after the click: started any earlier, they came up over the deal and hid half of it. Escape
-skips the whole thing and launches at once. An empty register keeps
+will open, smiling. In Windows Terminal (1.17 or later, in its own Cascadia font) the window of
+tabs is drawn where it will really open, beside the figure, and the cards land in the tabs it
+will have; the terminal comes up in that place as the last one lands. It plays at half speed,
+because at full speed the riffle is over before you have found it. The terminals are started as
+the last card lands, about five and a half seconds after the click: started any earlier, they
+came up over the deal and hid half of it. Escape skips the whole thing and launches at once. An
+empty register keeps
 the figure standing in it while motes drift past. The first claim types itself under a block
 cursor, and every later one lands whole, because by then you are waiting on an answer rather than
 a show. All of it stops under `prefers-reduced-motion`.
