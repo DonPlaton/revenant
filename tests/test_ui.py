@@ -123,6 +123,18 @@ def test_the_cast_draws_only_this_project(page: str) -> None:
         assert path in page, f"icon and mascot disagree on {path[:28]}"
 
 
+def test_nothing_pale_rings_the_figure_on_the_icon() -> None:
+    """White eyes, an edge light and a glow all drew pale rings round the figure
+    at taskbar sizes. The eyes are holes in the sheet now, as dark as the tile."""
+    icon = (PAGE.parents[1] / "assets" / "icon.svg").read_text(encoding="utf-8")
+    assert "#f4efe6" not in icon.lower(), "the icon's eyes went back to white"
+    assert "radialGradient" not in icon, "a glow is back behind the figure"
+    assert "stroke" not in icon, "the tile has an edge again"
+    eyes = re.findall(r'<ellipse class="eye"[^>]*fill="#([0-9a-f]{6})"', icon, re.I)
+    assert len(eyes) == 2
+    assert all(max(int(e[i:i + 2], 16) for i in (0, 2, 4)) < 0x20 for e in eyes)
+
+
 def test_the_other_four_moments_are_wired(page: str) -> None:
     """One animation in one corner was the complaint. These are the rest."""
     assert 'bit.className = "spark";' in page and "sparks();" in page, "the ruler caret"

@@ -538,9 +538,10 @@ html[data-still] .sweep{display:none}
     tally: $("tally"), raise: $("raise"), word: $("word"), tabs: $("tabs"), segs: $("segs"),
   };
 
-  // The same drawing as assets/icon.svg, with the parts the stylesheet animates
-  // split out. Its pupils sit back and to the right, so it watches what follows
-  // it. The streaks are motion rather than identity and stay out of the icon.
+  // The body and hem of assets/icon.svg, with the parts the stylesheet animates
+  // split out. The icon cuts its eyes through the sheet; here they are drawn,
+  // and the pupils sit back and to the right, so it watches what follows it.
+  // The streaks are motion rather than identity and stay out of the icon.
   const FIGURE = `<svg class="rev" viewBox="0 0 58 58" aria-hidden="true">
       <g>
         <path class="streak" d="M41 16h8" stroke-width="3"/>
@@ -576,7 +577,7 @@ html[data-still] .sweep{display:none}
       </g>
     </svg>`;
 
-  // The shuffling figure is the icon's own drawing in the icon's three colours,
+  // The shuffling figure is the masthead's own drawing in its three colours,
   // so it cannot drift from it. The speed lines come off, since it is standing
   // still. The face is grouped so it can lag the head, a shut pair of eyes goes
   // in for the open ones to swap with, and the mouth becomes a line that can
