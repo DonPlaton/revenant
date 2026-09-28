@@ -12,3 +12,6 @@ design/revenant-register.html
 
 # the seeded canvas payload: the .dc.html files beside it are the design
 design/mascots/revenant-cast.html
+
+# The Python a downloaded copy was installed for (install.ps1).
+.revenant-python

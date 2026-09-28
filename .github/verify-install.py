@@ -80,6 +80,22 @@ def app_path_in(launcher: Path) -> str:
     return text
 
 
+def check_recorded_python(folder: Path) -> list[str]:
+    """revenant.cmd in a downloaded copy runs the Python the installer checked."""
+    recorded = folder / ".revenant-python"
+    if not recorded.is_file():
+        return [f"{recorded} was not written"]
+    python = Path(recorded.read_text(encoding="oem").strip())
+    if not python.is_file():
+        return [f"{recorded} names {python}, which does not exist"]
+    ran = subprocess.run(["cmd", "/c", str(folder / "revenant.cmd"), "--version"],
+                         capture_output=True, text=True, check=False)
+    print(f"  {recorded.name} -> {python}\n  revenant.cmd --version -> {ran.stdout.strip()}")
+    if ran.returncode != 0 or not ran.stdout.startswith("Revenant "):
+        return [f"revenant.cmd --version failed: {ran.stdout.strip()} {ran.stderr.strip()}"]
+    return []
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--absent", action="store_true", help="assert the install is gone instead")
@@ -134,6 +150,9 @@ def main() -> int:
 
     if not args.absent and not found:
         problems.append("no launcher was created at all")
+
+    if args.managed and sys.platform == "win32":
+        problems += check_recorded_python(managed)
 
     for problem in problems:
         print(f"FAIL: {problem}", file=sys.stderr)

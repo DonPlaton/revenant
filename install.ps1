@@ -194,6 +194,19 @@ if ($fromClone) {
 $target = Join-Path $here 'revenant_gui.py'
 if (-not (Test-Path $target)) { throw "revenant_gui.py is missing from $here" }
 
+# revenant.cmd, which -Cli puts on PATH, runs the Python checked above instead of
+# whatever `py -3` or `python` turns up first, which can be older than 3.10 or the
+# Store stub. Only a downloaded copy gets the file: a clone is never written to.
+# It is written in the console's code page, which is how cmd.exe reads it back.
+if (-not $fromClone) {
+  try {
+    $oem = [Text.Encoding]::GetEncoding([Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
+    [IO.File]::WriteAllText((Join-Path $here '.revenant-python'), $python, $oem)
+  } catch {
+    Write-Step 'could not record which Python to use; revenant.cmd will look for one'
+  }
+}
+
 # --------------------------------------------------------------------------- #
 # the native window, which is optional by design
 # --------------------------------------------------------------------------- #

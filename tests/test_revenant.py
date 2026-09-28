@@ -853,3 +853,20 @@ def test_the_double_click_installer_also_works_on_its_own() -> None:
     assert '-File "%~dp0install.ps1"' in text.split(":local", 1)[1]
     readme = (root / "README.md").read_text(encoding="utf-8")
     assert "install.ps1 | iex" in readme, "the one-liner and the file fetch the same script"
+
+
+def test_the_cli_shim_runs_the_python_the_installer_checked() -> None:
+    """`py -3` or the first python on PATH can be older than 3.10, or the Store
+    stub. A downloaded copy records the interpreter it was checked against, and
+    the shim prefers it, falling back only when the file is missing or wrong."""
+    root = Path(__file__).resolve().parents[1]
+    shim = (root / "revenant.cmd").read_bytes()
+    assert b"\n" not in shim.replace(b"\r\n", b""), "cmd.exe wants CRLF"
+    text = shim.decode("ascii")
+    recorded = text.index('set /p PY=<"%HERE%.revenant-python"')
+    assert recorded < text.index("where py"), "the recorded Python is tried first"
+    assert 'if exist "%PY%" if not exist "%PY%\\" goto :recorded' in text, "a folder is not a Python"
+    installer = (root / "install.ps1").read_text(encoding="utf-8")
+    block = installer.split("if (-not $fromClone) {", 1)[1].split("\n}", 1)[0]
+    assert ".revenant-python" in block and "OEMCodePage" in block, "only a downloaded copy, in cmd's code page"
+    assert ".revenant-python" in (root / ".gitignore").read_text(encoding="utf-8")
