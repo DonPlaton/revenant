@@ -113,7 +113,7 @@ curl -fsSL https://raw.githubusercontent.com/DonPlaton/revenant/main/install.sh 
 
 `--cli` gives you a `revenant` command. On Windows it adds the install folder to your user PATH.
 On macOS and Linux it writes `~/.local/bin/revenant`, but will not overwrite a `revenant` that
-another tool put there. `--ref v1.6.0` (`-Ref` on Windows) installs a specific version rather than
+another tool put there. `--ref v1.6.1` (`-Ref` on Windows) installs a specific version rather than
 the current main.
 
 On Windows it registers itself under Settings, Apps, so you can remove it there like anything
