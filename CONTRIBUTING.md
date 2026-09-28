@@ -7,7 +7,7 @@ Small project, simple rules.
 ```bash
 git clone https://github.com/DonPlaton/revenant
 cd revenant
-python -m pytest tests -q     # 448 tests, no network, no real session touched
+python -m pytest tests -q     # 454 tests, no network, no real session touched
 python revenant.py --since 7d # the command line
 python revenant_gui.py        # the desktop app
 ```
@@ -24,9 +24,9 @@ python revenant_gui.py        # the desktop app
 | `install.ps1` / `install.sh` | the quick start: run from a clone, or piped from the web |
 | `.github/verify-install.py` | what CI runs after an install to prove the launcher works |
 
-`revenant.py`, `revenant_agents.py` and `revenant_terminals.py` import nothing outside the standard library and must
-stay that way. The point of this tool is that it still runs on a machine you have only just
-rebooted. Only the desktop window may use `pywebview`, and it falls back to a browser window when
+`revenant.py`, `revenant_agents.py` and `revenant_terminals.py` import nothing outside the
+standard library and must stay that way, so the tool runs on any Python 3.10 or newer with
+nothing to install first, on a machine you have only just rebooted. Only the desktop window may use `pywebview`, and it falls back to a browser window when
 that is missing.
 
 ## Adding an agent
@@ -37,23 +37,26 @@ Subclass `Agent` in `revenant_agents.py` and add it to the `AGENTS` registry. Yo
 - a glob for transcript files, and how to read a session id out of a path
 - `head()`, which pulls the working directory and version out of the first records
 - `tail()`, which recovers the first and last prompts from the end of a file
+- `title()` or `titles()`, if the agent names its sessions (in each transcript, or in one index
+  file), so a row can say what a session was for
 - `history()`, if the agent keeps a prompt index
-- `live_registry()`, if the agent records which sessions are running, or `live_window` seconds of
-  recent activity to treat as possibly open when it does not
+- `live_registry()`, if the agent records which sessions are running; otherwise set
+  `live_window`, how many seconds of recent activity mark a session as possibly open
 - the resume command template, and the process names a live session runs under
 
 Open an issue first so we can agree on the shape. Bring a real transcript, redacted.
 
 ## Adding a terminal
 
-Subclass `Terminal` in `revenant_terminals.py`, declare which platforms it runs on, implement `available()`
-and `plan()`, and add it to `ORDER` and `ALL`. A `plan()` builds argv lists and runs nothing, so
-your backend gets tested on every platform even though only one can execute it.
+Subclass `Terminal` in `revenant_terminals.py`, declare which platforms it runs on and which
+`layouts` it can really produce (a window per session unless you say otherwise), implement
+`available()` and `plan()`, and add it to `ORDER` and `ALL`. A `plan()` builds argv lists and runs
+nothing, so your backend gets tested on every platform even though only one can execute it.
 
 ## Changing the installers
 
-They run two ways and both are tested on all three platforms by the `install` job: from a clone,
-and piped from the web with no folder to start from. To exercise the download path without GitHub,
+They run two ways, from a clone and piped from the web with no folder to start from, and the
+`install` job tests both on all three platforms. To exercise the download path without GitHub,
 serve an archive of the tree and point `REVENANT_ARCHIVE_URL` at it, which is exactly what CI does.
 
 An installer may only delete a folder it created. That is what the `.revenant-managed` marker is

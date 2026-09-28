@@ -4,11 +4,11 @@
 Needs headless Chrome (or Edge) for rendering and Pillow for the ICO and the GIF:
 
     python -m pip install pillow
-    python assets/src/build.py [icon|card|infographic|gif]
+    python assets/src/build.py [icon|card|infographic|gif|design]
 
-The demo GIF captures the *real* UI: it starts the desktop backend against your own
-Claude Code config and screenshots the page at a series of slider positions, so the
-numbers in it are whatever your machine actually has.
+The demo GIF captures the real UI: it starts the desktop backend against a synthetic
+config directory built by demo_fixture.py and screenshots the page at a series of
+slider positions, so no real path or prompt ends up in the repository.
 """
 
 from __future__ import annotations
@@ -206,7 +206,47 @@ def build_gif() -> None:
     print(f"  {_pretty(out)} ({out.stat().st_size // 1024} KB, {len(sequence)} frames)")
 
 
+#: The design canvases, and the picture each is laid out into.
+DESIGNS = (("design", "design/interface.png"), ("design/mascots", "design/mascots/cast.png"))
+
+
+def build_design() -> None:
+    """Draw every artboard of the design canvases and lay each canvas out as one picture.
+
+    An artboard is plain HTML and draws without the canvas editor's runtime, so
+    the pictures can be remade here and read on GitHub, where the sources cannot.
+    """
+    import json
+
+    from PIL import Image
+
+    print("design canvases")
+    margin, width = 60, 1600
+    for folder, out in DESIGNS:
+        boards = json.loads((ROOT / folder / "canvas.json").read_text(encoding="utf-8"))["artboards"]
+        left = min(b["x"] for b in boards)
+        top = min(b["y"] for b in boards)
+        sheet = Image.new(
+            "RGB",
+            (max(b["x"] + b["w"] for b in boards) - left + 2 * margin,
+             max(b["y"] + b["h"] for b in boards) - top + 2 * margin),
+            "#141312",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            for board in boards:
+                png = Path(tmp) / f"{board['file']}.png"
+                shoot((ROOT / folder / board["file"]).as_uri(), png, (board["w"], board["h"]))
+                frame = Image.open(png).convert("RGB")
+                sheet.paste(frame.crop((0, 0, board["w"], board["h"])),
+                            (board["x"] - left + margin, board["y"] - top + margin))
+        if sheet.width > width:
+            sheet = sheet.resize((width, round(sheet.height * width / sheet.width)), Image.LANCZOS)
+        sheet.save(ROOT / out, optimize=True)
+        print(f"  {_pretty(ROOT / out)}")
+
+
 TARGETS = {
+    "design": build_design,
     "icon": build_icon,
     "card": build_card,
     "infographic": build_infographic,

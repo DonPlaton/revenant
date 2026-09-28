@@ -26,7 +26,7 @@
      max-width:15ch}
   h1 em{font-style:normal;color:var(--ember)}
   .lede{margin-top:22px;font-size:14.5px;line-height:1.75;color:var(--ink-2);max-width:47ch}
-  .facts{margin-top:auto;display:flex;gap:30px;font-size:11px;color:var(--ink-3);line-height:1.6}
+  .facts{margin-top:auto;display:flex;gap:28px;font-size:12.5px;color:var(--ink-3);line-height:1.55}
   .facts b{display:block;font-family:var(--serif);font-size:17px;color:var(--ink);font-weight:400;
            margin-bottom:6px;letter-spacing:0}
 
@@ -43,8 +43,8 @@
   .ruler em{font-style:normal;font-family:var(--serif);font-size:13px}
   .track{position:relative;height:16px;margin-bottom:4px}
   .track .l{position:absolute;left:0;right:0;top:7px;height:1px;background:var(--rule)}
-  .track .f{position:absolute;left:0;width:50%;top:7px;height:1px;background:var(--ember)}
-  .track .c{position:absolute;left:50%;top:1px;width:2px;height:14px;background:var(--ember)}
+  .track .f{position:absolute;left:0;width:42.85%;top:7px;height:1px;background:var(--ember)}
+  .track .c{position:absolute;left:42.85%;top:1px;width:2px;height:14px;background:var(--ember)}
   .track .k{position:absolute;top:3px;width:1px;height:8px;background:var(--rule)}
   /* Each label hangs off the same fraction as its tick, and the end two hang
      inside the track rather than off its edges. */
@@ -81,6 +81,22 @@
   .btn{background:var(--ember);color:#1c1a18;padding:8px 20px;font-size:10px;letter-spacing:.26em;
        white-space:nowrap;
        font-weight:500}
+
+  /* The figure from the app, risen out of its grave mist beside the window it
+     is about to deal into. The same drawing as ui/index.html, eyes and all. */
+  .cast{position:absolute;left:748px;bottom:10px;width:112px;height:112px;pointer-events:none}
+  .mist{position:absolute;left:712px;bottom:-4px;width:220px;height:44px;border-radius:50%;
+        background:radial-gradient(closest-side,rgba(202,210,208,.30),rgba(202,210,208,.12) 55%,transparent)}
+  .mist.far{left:742px;bottom:10px;width:190px;height:32px;opacity:.7}
+  .ember{position:absolute;left:724px;bottom:-2px;width:170px;height:70px;border-radius:50%;
+         background:radial-gradient(closest-side,rgba(221,123,82,.34),transparent)}
+  .rev{display:block;width:100%;height:100%;overflow:visible;color:var(--ember)}
+  .rev .body,.rev .peak{fill:currentColor}
+  .rev .shade,.rev .tip-shade{fill:#000;opacity:.16}
+  .rev .sheen{fill:#fff;opacity:.22}
+  .rev .sclera{fill:#f4efe6}
+  .rev .pupil,.rev .mouth{fill:#191715}
+  .rev .mouth{opacity:.85}
 </style>
 </head>
 <body>
@@ -89,12 +105,12 @@
     <div class="mark">REVENANT</div>
     <h1>Bring your agent sessions <em>back from the dead</em>.</h1>
     <p class="lede">Your machine went down with nine Claude Code and Codex sessions open. Pick how
-      far back to look, mark the ones you want, and each reopens in its own terminal tab, in the
-      right directory, resumed at the right conversation.</p>
+      far back to look, hit REVIVE, and each one reopens in a tab or window of its own, in the right
+      directory, already resumed.</p>
     <div class="facts">
-      <span><b>Windows, macOS, Linux</b>Windows Terminal, iTerm2,<br>tmux and nine more</span>
-      <span><b>No dependencies</b>the command line is one<br>stdlib Python file</span>
-      <span><b>Read only</b>a session that is still<br>running is never touched</span>
+      <span><b>Windows, macOS, Linux</b>Windows Terminal, iTerm2,<br>tmux and eleven more</span>
+      <span><b>No dependencies</b>the command line is plain<br>standard-library Python</span>
+      <span><b>Read only</b>never writes to, signals<br>or kills a session</span>
     </div>
   </div>
 
@@ -107,20 +123,21 @@
       <div class="ruler"><span>LOOKING BACK</span><em>seven days</em></div>
       <div class="track">
         <span class="l"></span><span class="f"></span>
-        <span class="k" style="left:0"></span><span class="k" style="left:16.6%"></span>
-        <span class="k" style="left:33.3%"></span><span class="k" style="left:50%"></span>
-        <span class="k" style="left:66.6%"></span><span class="k" style="left:83.3%"></span>
-        <span class="k" style="left:99.7%"></span>
+        <span class="k" style="left:0"></span><span class="k" style="left:14.28%"></span>
+        <span class="k" style="left:28.57%"></span><span class="k" style="left:42.85%"></span>
+        <span class="k" style="left:57.14%"></span><span class="k" style="left:71.42%"></span>
+        <span class="k" style="left:85.71%"></span><span class="k" style="left:99.7%"></span>
         <span class="c"></span>
       </div>
       <div class="scale">
         <span style="left:0">6h</span>
-        <span style="left:16.6%;transform:translateX(-50%)">1d</span>
-        <span style="left:33.3%;transform:translateX(-50%)">3d</span>
-        <span style="left:50%;transform:translateX(-50%);color:#dd7b52">7d</span>
-        <span style="left:66.6%;transform:translateX(-50%)">14d</span>
-        <span style="left:83.3%;transform:translateX(-50%)">30d</span>
-        <span style="left:99.7%;transform:translateX(-100%)">90d</span>
+        <span style="left:14.28%;transform:translateX(-50%)">1d</span>
+        <span style="left:28.57%;transform:translateX(-50%)">3d</span>
+        <span style="left:42.85%;transform:translateX(-50%);color:#dd7b52">7d</span>
+        <span style="left:57.14%;transform:translateX(-50%)">14d</span>
+        <span style="left:71.42%;transform:translateX(-50%)">30d</span>
+        <span style="left:85.71%;transform:translateX(-50%)">90d</span>
+        <span style="left:99.7%;transform:translateX(-100%)">all</span>
       </div>
 
       <div class="reg">
@@ -140,7 +157,7 @@
           <span class="t">12</span>
         </div>
         <div class="r held">
-          <span class="a">now</span><span class="m"><i></i></span>
+          <span class="a">2m</span><span class="m"><i></i></span>
           <span class="b"><span class="n">ml-pipeline<span class="flag">HELD, PROCESS 4812</span></span>
             <span class="p">C:\dev\ml-pipeline</span></span>
           <span class="t">31</span>
@@ -148,12 +165,29 @@
       </div>
 
       <div class="cta">
-        <small>Two of two marked.</small>
+        <small>2 of 2 marked. 1 held back.</small>
         <span class="mode"><b class="on">one window</b><b>separate windows</b></span>
         <span class="btn">REVIVE 2</span>
       </div>
     </div>
   </div>
+  <div class="ember"></div>
+  <div class="mist far"></div>
+  <div class="cast"><svg class="rev" viewBox="0 0 58 58" aria-hidden="true">
+      
+      <path class="body" d="M4 42V21C4 10.5 12 2.5 22 2.5S40 10.5 40 21v21z"/>
+      <g><path class="peak" d="M4 41.4h7.2C10.77 45.99 7.08 48.54 6.3 50.75Q6 51.85 5.7 50.75C4.92 48.54 4.43 45.99 4 41.4z"/><path class="peak" d="M11.2 41.4h7.2C17.97 44.73 15.38 46.58 14.69 47.99Q14.3 49.05 13.91 47.99C13.22 46.58 11.63 44.73 11.2 41.4z"/><path class="peak" d="M18.4 41.4h7.2C25.17 45.54 23.28 47.84 22.53 49.76Q22.2 50.85 21.87 49.76C21.12 47.84 18.83 45.54 18.4 41.4z"/><path class="peak" d="M25.6 41.4h7.2C32.37 44.55 30.98 46.3 30.31 47.6Q29.9 48.65 29.49 47.6C28.82 46.3 26.03 44.55 25.6 41.4z"/><path class="peak" d="M32.8 41.4h7.2C39.57 45.81 39.18 48.26 38.41 50.36Q38.1 51.45 37.79 50.36C37.02 48.26 33.23 45.81 32.8 41.4z"/><path class="tip-shade" d="M34 42H40C39.6 45.9 39.18 48.26 38.41 50.36Q38.1 51.45 37.79 50.36C37.2 46.8 34.9 43.6 34 42z"/></g>
+      <path class="shade" d="M30 3.6C36 7 40 13.4 40 21v21h-6V21c0-7-1.6-13.2-4-17.4z"/>
+      <path class="sheen" d="M14.6 5.2C11 8.6 9 14.2 9 21v7.5C9 30.8 7.4 32.8 6 34V21c0-6.6 3.2-12.8 8.6-15.8z"/>
+      <g class="eyes">
+        <ellipse class="sclera" cx="15.4" cy="21.5" rx="5.3" ry="6"/>
+        <ellipse class="sclera" cx="29.6" cy="21.5" rx="5.3" ry="6"/>
+        <circle class="pupil" cx="17.8" cy="22.6" r="2.5"/>
+        <circle class="pupil" cx="32" cy="22.6" r="2.5"/>
+      </g>
+      <ellipse class="mouth" cx="22.4" cy="33.4" rx="2.5" ry="3"/>
+    </svg></div>
+  <div class="mist"></div>
 </div>
 </body>
 </html>
