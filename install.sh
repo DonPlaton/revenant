@@ -10,7 +10,7 @@
 #   ./install.sh                  the app, and nothing else
 #   ./install.sh --native-window  also install pywebview, for a real app window
 #   ./install.sh --cli            also link `revenant` into ~/.local/bin
-#   ./install.sh --ref v1.2.0     which version to download, when run from the web
+#   ./install.sh --ref v1.6.0     which version to download, when run from the web
 #
 # ./uninstall.sh removes exactly what this adds.
 
@@ -202,17 +202,22 @@ DESKTOPFILE
   WHERE="Look for Revenant in your application menu."
 fi
 
-if [ "$CLI" = 1 ]; then
+BIN="$HOME/.local/bin/revenant"
+if [ "$CLI" = 1 ] && [ -e "$BIN" ] && ! grep -qs '/revenant.py"' "$BIN"; then
+  # Something else already answers to `revenant` there, such as the script
+  # `pip install --user` writes. It is not ours to replace.
+  echo "  left $BIN alone: it is not a launcher this installer wrote"
+elif [ "$CLI" = 1 ]; then
   mkdir -p "$HOME/.local/bin"
   # A symlink would run revenant.py under its `#!/usr/bin/env python3` shebang,
   # which on an older macOS is the 3.9 this installer just spent fifteen lines
   # avoiding. The wrapper names the interpreter that was actually checked.
-  cat > "$HOME/.local/bin/revenant" <<WRAPPER
+  cat > "$BIN" <<WRAPPER
 #!/bin/sh
 exec "$PYTHON" "$HERE/revenant.py" "\$@"
 WRAPPER
-  chmod +x "$HOME/.local/bin/revenant"
-  echo "  command -> $HOME/.local/bin/revenant"
+  chmod +x "$BIN"
+  echo "  command -> $BIN"
   case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;
     *) echo "  (add $HOME/.local/bin to your PATH to call it from anywhere)" ;;

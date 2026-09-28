@@ -12,8 +12,7 @@ removed=0
 for path in \
   "$HOME/Applications/Revenant.app" \
   "$HOME/.local/share/applications/revenant.desktop" \
-  "$HOME/.local/share/icons/hicolor/256x256/apps/revenant.png" \
-  "$HOME/.local/bin/revenant"
+  "$HOME/.local/share/icons/hicolor/256x256/apps/revenant.png"
 do
   if [ -e "$path" ] || [ -L "$path" ]; then
     rm -rf "$path"
@@ -21,6 +20,17 @@ do
     removed=1
   fi
 done
+
+# `revenant` in ~/.local/bin may just as well be the script `pip install --user`
+# wrote, so only the launcher install.sh writes, the one that runs revenant.py, goes.
+BIN="$HOME/.local/bin/revenant"
+if grep -qs '/revenant.py"' "$BIN"; then
+  rm -f "$BIN"
+  echo "removed $BIN"
+  removed=1
+elif [ -e "$BIN" ]; then
+  echo "left $BIN alone: it is not the launcher install.sh wrote"
+fi
 
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/revenant"
 if [ -f "$APP_DIR/$MARKER" ]; then

@@ -839,3 +839,17 @@ def test_tabs_split_over_several_calls_are_counted_as_tabs(tmp_path: Path, monke
     out = io.StringIO()
     assert revenant.launch(sessions, stream=out) == 0
     assert "Opened 5 tabs" in out.getvalue()
+
+
+def test_the_double_click_installer_also_works_on_its_own() -> None:
+    """Downloaded by itself from the releases page there is no install.ps1 beside
+    it, so it fetches the one the one-liner uses instead of failing."""
+    root = Path(__file__).resolve().parents[1]
+    raw = (root / "Install Revenant.cmd").read_bytes()
+    assert b"\r\n" in raw and b"\n" not in raw.replace(b"\r\n", b""), "cmd.exe wants CRLF"
+    text = raw.decode("ascii")
+    assert 'if exist "%~dp0install.ps1" goto local' in text
+    assert "https://raw.githubusercontent.com/DonPlaton/revenant/main/install.ps1" in text
+    assert '-File "%~dp0install.ps1"' in text.split(":local", 1)[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    assert "install.ps1 | iex" in readme, "the one-liner and the file fetch the same script"
