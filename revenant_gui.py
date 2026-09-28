@@ -51,6 +51,13 @@ def _ui_dir() -> Path:
 
 
 UI_DIR = _ui_dir()
+#: The files the page may load, by name. A request can only pick from these, so
+#: nothing it sends is ever turned into a path.
+UI_FILES = {
+    entry.name: entry
+    for entry in (UI_DIR.iterdir() if UI_DIR.is_dir() else ())
+    if entry.is_file() and entry.suffix.lower() in (".html", ".css", ".js", ".svg", ".png", ".ico", ".woff2")
+}
 MAX_BODY_BYTES = 256 * 1024
 #: Sessions one request may name. More than this is almost certainly a mistake,
 #: and the page says which ones were left behind.
@@ -79,8 +86,8 @@ _CONTENT_TYPES = {
 class Backend:
     """Everything the UI can ask for. Deliberately small."""
 
-    #: A scan costs a directory walk plus a `tasklist` subprocess, and the UI fires
-    #: several requests per click, so an identical scan is reused for a moment.
+    #: A scan costs a directory walk and a read of every transcript's tail, and the
+    #: UI fires several requests per click, so an identical scan is reused for a moment.
     CACHE_SECONDS = 8.0
 
     def __init__(self, *, agent: Agent = CLAUDE_CODE, root: str | None = None) -> None:
@@ -358,14 +365,21 @@ class Backend:
         shell = "pwsh" if os.name == "nt" else "bash"
         return {"text": revenant.render_commands(chosen, shell=shell), "count": len(chosen)}
 
-    def reveal(self, path: str) -> dict:
-        """Open a session's folder in the file manager."""
-        target = Path(path)
+    def reveal(self, session_id: str, *, days: float, which: str = "") -> dict:
+        """Open a session's folder in the file manager.
+
+        The page names the session, not the folder, so the only folders this can
+        open are ones the scan itself found on record.
+        """
+        found = self._by_id([session_id], days=days, which=which) if session_id else []
+        if not found or not found[0].cwd:
+            return {"ok": False, "message": "That session is no longer on disk."}
+        target = Path(found[0].cwd)
         if not target.is_dir():
             return {"ok": False, "message": "Folder no longer exists."}
         try:
             if os.name == "nt":
-                os.startfile(str(target))  # noqa: S606 - user-initiated, path came from our own scan
+                os.startfile(str(target))  # noqa: S606 - user-initiated, a folder from our own scan
             elif sys.platform == "darwin":
                 subprocess.Popen(["open", str(target)])
             else:
@@ -508,7 +522,7 @@ class Handler(BaseHTTPRequestHandler):
 
         self.backend.touch()
         if parsed.path in {"/", "/index.html"}:
-            self._serve_file(UI_DIR / "index.html")
+            self._serve_file("index.html")
             return
         if parsed.path == "/api/sessions":
             days = _as_float(query.get("days", ["7"])[0], 7.0)
@@ -522,7 +536,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True})
             return
         if parsed.path.startswith("/ui/"):
-            self._serve_file(UI_DIR / parsed.path[4:])
+            self._serve_file(parsed.path[4:])
             return
         self._send(404, b"not found", "text/plain; charset=utf-8")
 
@@ -569,22 +583,25 @@ class Handler(BaseHTTPRequestHandler):
             result.setdefault("spots", [])
             self._json(result)
         elif parsed.path == "/api/reveal":
-            self._json(self.backend.reveal(str(payload.get("path", ""))))
+            self._json(self._guarded(lambda: self.backend.reveal(ids[0] if ids else "", days=days, which=which)))
         elif parsed.path == "/api/quit":
             self._json({"ok": True})
             self.backend.request_stop()
         else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
-    def _serve_file(self, path: Path) -> None:
+    def _serve_file(self, name: str) -> None:
+        """One of the page's own files, looked up by name. Anything else, including
+        any path with a separator in it, is simply not on the list."""
+        entry = UI_FILES.get(name)
         try:
-            resolved = path.resolve()
-            resolved.relative_to(UI_DIR.resolve())  # no traversal outside ui/
-            body = resolved.read_bytes()
-        except (OSError, ValueError):
+            body = entry.read_bytes() if entry else None
+        except OSError:
+            body = None
+        if body is None:
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
-        self._send(200, body, _CONTENT_TYPES.get(resolved.suffix.lower(), "application/octet-stream"))
+        self._send(200, body, _CONTENT_TYPES.get(entry.suffix.lower(), "application/octet-stream"))
 
 
 def _as_float(value: object, fallback: float, *, low: float = 0.04, high: float = 3650.0) -> float:
@@ -605,6 +622,26 @@ def serve(backend: Backend) -> tuple[ThreadingHTTPServer, str]:
     threading.Thread(target=server.serve_forever, daemon=True).start()
     port = server.server_address[1]
     return server, f"http://127.0.0.1:{port}/?t={backend.token}"
+
+
+#: How the chromeless browser window is started. The profile is Revenant's own
+#: and holds one local page, so the browser's background work (updates, sync,
+#: translation, a spare renderer kept warm for the next tab) has nothing to do
+#: here. Measured on Windows with Chrome, that took the window from about 120 MB
+#: of renderer and 2 to 7% of a core at rest down to about 70 MB and under 1%.
+APP_WINDOW_FLAGS = (
+    "--window-size=1000,760",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-extensions",
+    "--disable-sync",
+    "--disable-default-apps",
+    "--no-pings",
+    "--disable-features=Translate,OptimizationHints,MediaRouter,SpareRendererForSitePerProcess,"
+    "AutofillServerCommunication",
+)
 
 
 def _browser_binary() -> str | None:
@@ -674,16 +711,7 @@ def run_gui(*, agent: Agent = CLAUDE_CODE, root: str | None = None) -> int:
     if binary:
         profile = revenant.state_dir() / "browser-profile"
         profile.mkdir(parents=True, exist_ok=True)
-        process = subprocess.Popen(
-            [
-                binary,
-                f"--app={url}",
-                f"--user-data-dir={profile}",
-                "--window-size=1000,760",
-                "--no-first-run",
-                "--no-default-browser-check",
-            ]
-        )
+        process = subprocess.Popen([binary, f"--app={url}", f"--user-data-dir={profile}", *APP_WINDOW_FLAGS])
         try:
             backend.wait_until_idle()
         except KeyboardInterrupt:

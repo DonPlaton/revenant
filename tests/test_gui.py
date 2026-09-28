@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -152,9 +153,40 @@ def test_commands_endpoint_returns_paste_ready_text(served) -> None:
 
 def test_reveal_rejects_a_missing_folder(served) -> None:
     backend, base = served
-    status, body = _post(f"{base}/api/reveal?t={backend.token}", {"path": "D:/definitely/not/here"})
+    # ALPHA's folder is on record but not on this disk.
+    status, body = _post(f"{base}/api/reveal?t={backend.token}", {"ids": [ALPHA], "days": 7})
     assert status == 200
     assert json.loads(body)["ok"] is False
+
+
+def test_reveal_opens_only_a_folder_the_scan_found(served, tmp_path: Path, monkeypatch) -> None:
+    """The page names a session, never a path, so a request cannot point the
+    file manager anywhere the scan did not find a session."""
+    backend, base = served
+    here = tmp_path / "project"
+    here.mkdir()
+    sid = "33333333-3333-3333-3333-333333333333"
+    _transcript(backend.root, "C--project", sid, str(here), age_hours=1)
+    backend.invalidate()
+    opened: list[str] = []
+    if hasattr(os, "startfile"):
+        monkeypatch.setattr(os, "startfile", lambda target: opened.append(str(target)))
+    else:
+        monkeypatch.setattr(gui.subprocess, "Popen", lambda argv, **_: opened.append(argv[-1]))
+    for payload in ({"path": str(tmp_path)}, {"ids": ["not-a-session"], "days": 7}):
+        _, body = _post(f"{base}/api/reveal?t={backend.token}", payload)
+        assert json.loads(body)["ok"] is False
+    _, body = _post(f"{base}/api/reveal?t={backend.token}", {"ids": [sid], "days": 7})
+    assert json.loads(body)["ok"] is True
+    assert opened == [str(here)]
+
+
+def test_only_the_pages_own_files_are_served(served) -> None:
+    backend, base = served
+    assert _get(f"{base}/ui/index.html?t={backend.token}")[0] == 200
+    assert set(gui.UI_FILES) == {"index.html"}
+    for name in ("..%2Frevenant.py", "..%5Crevenant.py", "%2e%2e/revenant.py", "nothing.html"):
+        assert _get(f"{base}/ui/{name}?t={backend.token}")[0] == 404
 
 
 def test_missing_config_dir_is_reported_not_raised(tmp_path: Path) -> None:

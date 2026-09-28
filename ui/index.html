@@ -985,7 +985,7 @@ html[data-still] .sweep{display:none}
         <div class="blank">
           <span class="pale" aria-hidden="true">${FIGURE}</span>
           ${MOTES}
-          <p>Every session in this window is still running, or there were none to begin with.</p>
+          <p>No agent session was active in this window.</p>
           <small>Drag the caret right to look further back.<br>
                  Nothing here is deleted. Transcripts stay on disk for as long as your agent keeps them.</small>
         </div>`;
@@ -1000,6 +1000,13 @@ html[data-still] .sweep{display:none}
           if (event.key.toLowerCase() === "o") {
             event.preventDefault();
             reveal(node);
+          }
+          // Space marks the row, as it presses any button. Enter revives, here as
+          // anywhere: after a click the row has focus, and Enter toggling it back
+          // was a surprise.
+          if (event.key === "Enter") {
+            event.preventDefault();
+            if (!el.raise.disabled) el.raise.click();
           }
         });
       });
@@ -1019,7 +1026,7 @@ html[data-still] .sweep{display:none}
     api("/api/reveal", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: node.dataset.path }),
+      body: JSON.stringify({ ids: [node.dataset.id], days: stop().days, agent }),
     }).then((r) => { if (!r.ok) word(r.message || "That folder is gone.", true); });
   }
 
@@ -1034,11 +1041,11 @@ html[data-still] .sweep{display:none}
       : "";
     const said = s.live
       ? ""
-      : `<span class="said">${escape(s.lastPrompt || s.firstPrompt || "")}</span>`;
+      : `<span class="said">${escape(s.summary || s.lastPrompt || s.firstPrompt || "")}</span>`;
     return `<button class="row enter" type="button" data-id="${escape(s.sessionId)}"
-        data-on="${on}" data-held="${Boolean(s.live)}" data-path="${escape(s.cwd || "")}"
+        data-on="${on}" data-held="${Boolean(s.live)}"
         aria-pressed="${on}" ${s.live ? "disabled" : ""}
-        title="Click to mark. Double click, or press O, to open the folder."
+        title="Click or press Space to mark. Double click, or press O, to open the folder."
         style="animation-delay:${Math.min(index * 26, 320)}ms">
       <span class="age">${escape(s.ageLabel || "")}</span>
       <span class="mark"><i></i></span>

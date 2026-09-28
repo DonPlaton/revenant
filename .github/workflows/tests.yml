@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Tests and installs read the repository and nothing else.
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:

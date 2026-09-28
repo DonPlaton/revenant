@@ -162,7 +162,7 @@ def test_the_page_script_actually_parses(page: str, tmp_path: Path) -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed, so the script cannot be parsed here")
-    scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+    scripts = re.findall(r"<script>(.*?)</script>", page, re.S | re.I)
     assert scripts, "the page has no inline script"
     target = tmp_path / "page.js"
     target.write_text("\n;\n".join(scripts), encoding="utf-8")
@@ -561,7 +561,7 @@ def test_the_cards_are_thrown_into_where_the_real_window_opens(page: str, tmp_pa
 def test_no_top_level_name_is_declared_twice(page: str) -> None:
     """node --check catches a second const, but a second function declaration
     silently replaces the first, which is worse."""
-    script = "\n".join(re.findall(r"<script>(.*?)</script>", page, re.S))
+    script = "\n".join(re.findall(r"<script>(.*?)</script>", page, re.S | re.I))
     names = re.findall(r"^  (?:const|let|var)\s+([A-Za-z_$][\w$]*)", script, re.M)
     names += re.findall(r"^  (?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)", script, re.M)
     twice = sorted({n for n in names if names.count(n) > 1})
@@ -885,3 +885,18 @@ def test_the_mist_glow_is_not_the_tab_glow(page: str) -> None:
     for sel, body in re.findall(r"([^{}]+)\{([^}]*)\}", styles):
         if ".sh-glow" in sel:
             assert "width" not in body and "height" not in body, sel
+
+
+def test_enter_revives_even_with_a_row_focused(page: str) -> None:
+    """After a click the row has focus, and Enter used to toggle it back instead
+    of reviving. Space still marks a row, as it presses any button."""
+    row_keys = page.split('node.addEventListener("keydown", (event) => {', 1)[1].split("});", 1)[0]
+    assert 'event.key === "Enter"' in row_keys and "el.raise.click()" in row_keys
+    assert "event.preventDefault();" in row_keys.split('event.key === "Enter"', 1)[1]
+
+
+def test_a_row_says_what_the_session_is_called(page: str) -> None:
+    """The agent's own name for a session beats its last prompt, which is often
+    just "continue". The service already picks the best of the two."""
+    assert "escape(s.summary || s.lastPrompt || s.firstPrompt" in page
+    assert "Every session in this window is still running" not in page, "running sessions are listed, held"
