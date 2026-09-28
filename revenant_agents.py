@@ -166,11 +166,36 @@ def _records(path: Path, *, limit: int | None = None) -> Iterator[dict]:
                 yield record
 
 
-def _tail_lines(path: Path, *, window: int) -> Iterator[bytes]:
+def _lines_with(blob: bytes, needles: Iterable[bytes]) -> list[bytes]:
+    """The whole lines of `blob` holding any of `needles`, in file order.
+
+    Found with `bytes.find`, so the lines without one are never cut out at all.
+    A rollout's tail is hundreds of thousands of lines of tool traffic around a
+    handful of prompts, and splitting all of it to test each line was most of
+    the cost of a scan.
+    """
+    starts: set[int] = set()
+    for needle in needles:
+        at = blob.find(needle)
+        while at >= 0:
+            starts.add(blob.rfind(b"\n", 0, at) + 1)
+            end = blob.find(b"\n", at)
+            if end < 0:
+                break
+            at = blob.find(needle, end)
+    lines = []
+    for start in sorted(starts):
+        end = blob.find(b"\n", start)
+        lines.append(blob[start:end if end >= 0 else len(blob)].rstrip(b"\r"))
+    return lines
+
+
+def _tail_lines(path: Path, *, window: int, containing: Iterable[bytes] = ()) -> Iterator[bytes]:
     """Yield whole lines from the last `window` bytes of a file, as raw bytes.
 
-    Callers that only want a few kinds of record can test the bytes and skip the
-    cost of parsing the rest.
+    With `containing`, only the lines that hold one of those byte strings, which
+    is how a caller after a few kinds of record skips both the parsing and the
+    splitting of the rest.
     """
     try:
         size = path.stat().st_size
@@ -181,7 +206,8 @@ def _tail_lines(path: Path, *, window: int) -> Iterator[bytes]:
             blob = handle.read()
     except OSError:
         return
-    yield from blob.splitlines()
+    needles = tuple(containing)
+    yield from (_lines_with(blob, needles) if needles else blob.splitlines())
 
 
 def _tail_records(path: Path, *, window: int) -> Iterator[dict]:
@@ -335,11 +361,10 @@ class ClaudeCode(Agent):
         """What the user typed within the last `window` bytes, and any names seen."""
         prompts: list[str] = []
         names: dict[str, str] = {}
-        for line in _tail_lines(transcript, window=window):
-            # Parsing every tool result to find the odd prompt costs more than the
-            # rest of the scan; a user record always says "user".
-            if b'"user"' not in line and not any(kind.encode() in line for kind in _TITLE_TYPES):
-                continue
+        # Parsing every tool result to find the odd prompt costs more than the rest
+        # of the scan; a user record always says "user".
+        wanted = (b'"user"', *(kind.encode() for kind in _TITLE_TYPES))
+        for line in _tail_lines(transcript, window=window, containing=wanted):
             try:
                 record = json.loads(line.decode("utf-8", errors="replace"))
             except json.JSONDecodeError:
@@ -412,10 +437,8 @@ class ClaudeCode(Agent):
     def _scan_title(self, transcript: Path, window: int) -> str:
         kinds = [kind.encode() for kind, _ in TITLE_RECORDS]
         names: dict[str, str] = {}
-        for raw in _tail_lines(transcript, window=window):
-            # Parsing every record here would cost more than the whole scan does.
-            if not any(kind in raw for kind in kinds):
-                continue
+        # Parsing every record here would cost more than the whole scan does.
+        for raw in _tail_lines(transcript, window=window, containing=kinds):
             try:
                 record = json.loads(raw)
             except (json.JSONDecodeError, UnicodeDecodeError):
@@ -527,9 +550,7 @@ class Codex(Agent):
         same prompt rather than a second one.
         """
         prompts: list[str] = []
-        for line in _tail_lines(transcript, window=window):
-            if not any(hint in line for hint in _CODEX_PROMPT_HINTS):
-                continue
+        for line in _tail_lines(transcript, window=window, containing=_CODEX_PROMPT_HINTS):
             try:
                 record = json.loads(line.decode("utf-8", errors="replace"))
             except json.JSONDecodeError:

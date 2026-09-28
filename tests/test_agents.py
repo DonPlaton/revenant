@@ -481,3 +481,22 @@ def test_a_bare_string_on_a_title_line_does_not_break_the_listing(tmp_path: Path
     transcript.write_text('"custom-title"\n{"type": "custom-title", "customTitle": "kept"}\n', encoding="utf-8")
     title = agents.ClaudeCode().title(transcript)
     assert isinstance(title, str)
+
+
+def test_only_the_lines_asked_for_are_cut_out(tmp_path: Path) -> None:
+    """A rollout's tail is mostly tool traffic. The lines holding a prompt are
+    found by searching the bytes, in file order, whatever the line endings."""
+    from revenant_agents import _lines_with, _tail_lines
+
+    blob = b'{"a":1}\r\n{"role":"user","x":"user_message"}\r\n{"b":2}\n{"type":"user_message"}'
+    assert _lines_with(blob, (b"user_message", b'"user"')) == [
+        b'{"role":"user","x":"user_message"}',
+        b'{"type":"user_message"}',
+    ]
+    assert _lines_with(blob, (b"nothing",)) == []
+    path = tmp_path / "t.jsonl"
+    path.write_bytes(b"cut off\n" + blob)
+    everything = list(_tail_lines(path, window=len(blob) + 2))
+    assert everything[0] == b'{"a":1}', "the partial first line is dropped"
+    picked = list(_tail_lines(path, window=len(blob) + 2, containing=(b"user_message",)))
+    assert picked == [line for line in everything if b"user_message" in line]
