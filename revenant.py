@@ -1153,7 +1153,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  revenant                      sessions from the last 24h\n"
-            "  revenant --since 7d --pick    choose from the last week\n"
+            "  revenant --since 7d --pick --launch\n"
+            "                                choose from the last week, then open them\n"
             "  revenant --since 6h --launch  reopen each as a tab of one window\n"
             "  revenant --launch --layout windows\n"
             "                                a terminal window per session instead\n"
@@ -1172,7 +1173,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--since", default="24h", help="window start: 24h, 7d, today, all, 2026-09-01")
     parser.add_argument("--until", help="window end (same formats)")
     parser.add_argument("--dir", action="append", default=[], help="only sessions whose path contains this")
-    parser.add_argument("--slug", help="only this transcript folder")
+    parser.add_argument("--slug", help="only transcript folders whose name contains this")
     parser.add_argument("--min-turns", type=int, default=1, help="skip sessions with fewer prompts (default 1)")
     parser.add_argument("--limit", type=int, default=40, help="max sessions to show (default 40, 0 = no limit)")
     parser.add_argument("--latest-per-dir", action="store_true", help="keep only the newest session per directory")
