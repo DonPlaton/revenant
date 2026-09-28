@@ -10,7 +10,7 @@
 #   ./install.sh                  the app, and nothing else
 #   ./install.sh --native-window  also install pywebview, for a real app window
 #   ./install.sh --cli            also link `revenant` into ~/.local/bin
-#   ./install.sh --ref v1.6.1     which version to download, when run from the web
+#   ./install.sh --ref v1.6.2     which version to download, when run from the web
 #
 # ./uninstall.sh removes exactly what this adds.
 
