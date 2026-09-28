@@ -447,6 +447,11 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 }
 html[data-still] .row{animation:none}
 html[data-still] .sweep{display:none}
+/* A recorded frame is drawn at one moment, and a screenshot's clock does not run
+   CSS animations or transitions, so everything is shown at rest. The deal itself
+   is drawn by script and is unaffected. */
+html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animation:none!important;
+  transition:none!important}
 </style>
 </head>
 <body>
@@ -517,6 +522,11 @@ html[data-still] .sweep{display:none}
   const TOKEN = params.get("t") || "";
   if (params.get("still")) document.documentElement.dataset.still = "1";
   const PRESET = params.get("days");
+  // For the README's recording of the deal (assets/src/build.py deal): the page
+  // deals the rows it has marked and draws the scene frozen at this moment of
+  // scene time. It only ever draws: nothing is sent to the service.
+  const FRAME = params.get("frame");
+  if (FRAME !== null) document.documentElement.dataset.frame = "1";
 
   const STOPS = [
     { days: 0.25, mark: "6h", said: "six hours" },
@@ -665,7 +675,7 @@ html[data-still] .sweep{display:none}
   };
 
   function run(which) {
-    if (stillness()) return;
+    if (stillness() || FRAME !== null) return;
     const width = lane.clientWidth;
     if (width < 260) return;
 
@@ -910,7 +920,9 @@ html[data-still] .sweep{display:none}
       return;
     }
 
-    el.where.textContent = document.documentElement.dataset.still
+    // Screenshots and recordings name the default place, never the temporary
+    // folder the synthetic sessions they are made from sits in.
+    el.where.textContent = document.documentElement.dataset.still || FRAME !== null
       ? `Reading transcripts in ${data.agent === "codex" ? "~/.codex" : "~/.claude"}`
       : `Reading transcripts in ${data.root}`;
 
@@ -2037,7 +2049,7 @@ html[data-still] .sweep{display:none}
         });
         setTimeout(resolve, show.LAUNCH + 400);
         // Frames stop in a hidden window; the scene leaves on time regardless.
-        guard = setTimeout(() => show.stop(), show.END + 1500);
+        if (FRAME === null) guard = setTimeout(() => show.stop(), show.END + 1500);
       } catch (e) {
         clear();
         resolve();
@@ -2078,7 +2090,20 @@ html[data-still] .sweep{display:none}
       // What the revival carries so its window opens where, and when, the cards
       // went: the room it was placed in and the wait before the launch.
       wish: () => ({ room, wait: Math.round(show ? show.wait() : 0) }),
+      // One moment of the scene, in scene time, for the frozen frames.
+      draw: (t) => { if (show) show.render(Math.min(t, show.END / show.PACE)); },
     };
+  }
+
+  // Deals what is marked and draws it frozen at `at`, the way a frame of the
+  // recording is made. The scene's own clock never starts, there is no window
+  // to place, and REVIVE is never pressed, so no terminal can open. A negative
+  // moment leaves the list as it is before the click.
+  function freeze(at) {
+    if (!(at >= 0) || !chosen.size) return;
+    window.requestAnimationFrame = () => 0;
+    mist();
+    deal([...chosen], null).draw(at);
   }
 
   // Where the page's top-left corner sits on the screen, in its own pixels:
@@ -2274,7 +2299,8 @@ html[data-still] .sweep{display:none}
   }
 
   paintRuler();
-  load();
+  const loaded = load();
+  if (FRAME !== null) loaded.then(() => freeze(Number(FRAME)));
   // The deal's mist, drawn a piece at a time while nothing else is happening,
   // and not at all for a reader who asked for less motion: they get no deal.
   const whenIdle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 5000 })

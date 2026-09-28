@@ -368,7 +368,7 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-The 454 tests use no network, touch no real session and open no terminal. They run against a
+The 456 tests use no network, touch no real session and open no terminal. They run against a
 synthetic config directory in `tmp_path`, and any test that tries to start a program other than
 Python, node or `ps` fails. They cover:
 
@@ -404,6 +404,14 @@ on open at most once every six hours, on a click of the wordmark, on a switch of
 revival lands; in the Codex view the cursor leads and the figure does the eating, and in the
 combined view the two walk towards each other. Dragging the caret strikes sparks off it, and rows
 wipe in as a scan arrives.
+
+<div align="center">
+
+<img src="assets/deal.gif" alt="Ten sessions dealt: the figure rises out of grave mist, riffles a deck of small terminals and deals them into the tabs of one window" width="760">
+
+<sub>Ten sessions revived. Recorded frame by frame from the app, on made-up sessions.</sub>
+
+</div>
 
 Bring back up to five sessions and each row is stamped, and a soul lifts off it. Bring back more and
 the figure rises out of the floor through grave mist instead, asleep until it is clear of it, and

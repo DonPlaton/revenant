@@ -4,7 +4,7 @@
 Needs headless Chrome (or Edge) for rendering and Pillow for the ICO and the GIF:
 
     python -m pip install pillow
-    python assets/src/build.py [icon|card|infographic|gif|design]
+    python assets/src/build.py [icon|card|infographic|gif|deal|design]
 
 The demo GIF captures the real UI: it starts the desktop backend against a synthetic
 config directory built by demo_fixture.py and screenshots the page at a series of
@@ -55,7 +55,7 @@ def browser() -> str:
 
 
 def shoot(url: str, out: Path, size: tuple[int, int], *, scale: int = 1,
-          transparent: bool = False) -> None:
+          transparent: bool = False, quiet: bool = False) -> None:
     """Render `url` to `out`.
 
     Headless Chrome paints an opaque white backdrop unless told otherwise, which
@@ -89,7 +89,8 @@ def shoot(url: str, out: Path, size: tuple[int, int], *, scale: int = 1,
         )
     if not out.exists():
         raise SystemExit(f"Chrome did not produce {out}")
-    print(f"  {_pretty(out)}")
+    if not quiet:
+        print(f"  {_pretty(out)}")
 
 
 #: Icon entry sizes, and which drawing each is cut from.
@@ -206,6 +207,88 @@ def build_gif() -> None:
     print(f"  {_pretty(out)} ({out.stat().st_size // 1024} KB, {len(sequence)} frames)")
 
 
+#: The deal's recording: scene time between frames (it plays at half speed, so
+#: this is twice as long in the GIF), the last moment drawn, and how long the
+#: list before the click and the landed cards are held.
+DEAL_STEP_MS = 40
+DEAL_UNTIL_MS = 3260
+DEAL_HOLD_MS = (1100, 1800)
+DEAL_DAYS = 7
+
+
+def build_deal() -> None:
+    """Record the deal: the page draws the scene frozen at each moment, and every
+    frame is a screenshot of one moment.
+
+    The page is asked for frames only (`frame=` in the URL), which never presses
+    REVIVE, and the service it talks to refuses a revival outright, so no
+    terminal can open however the page changes.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from PIL import Image
+
+    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(HERE))
+    import demo_fixture
+    import revenant
+    import revenant_gui
+
+    print("deal gif (synthetic sessions)")
+    stand_ins = [
+        subprocess.Popen([sys.executable, "-c", "import time; time.sleep(900)"])
+        for _ in range(len(demo_fixture.LIVE))
+    ]
+    asked: list[object] = []
+
+    def refuse(*args: object, **kwargs: object) -> dict:
+        asked.append(args)
+        raise RuntimeError("a revival was asked for while recording")
+
+    moments = [-1, *range(0, DEAL_UNTIL_MS + 1, DEAL_STEP_MS)]
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = demo_fixture.build(Path(tmp) / "config", [p.pid for p in stand_ins])
+            agent = revenant.CLAUDE_CODE.variant(
+                process_images=revenant.CLAUDE_CODE.process_images | {"python.exe", "python", "python3"}
+            )
+            backend = revenant_gui.Backend(agent=agent, root=str(root))
+            backend.revive = refuse  # type: ignore[method-assign]
+            server, url = revenant_gui.serve(backend)
+            base = f"{url.split('/?')[0]}/?t={backend.token}&days={DEAL_DAYS}"
+            shots = [Path(tmp) / f"{index:03d}.png" for index in range(len(moments))]
+            try:
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    list(pool.map(lambda job: shoot(f"{base}&frame={job[0]}", job[1], WINDOW, quiet=True),
+                                  zip(moments, shots)))
+            finally:
+                server.shutdown()
+            height = round(GIF_WIDTH * WINDOW[1] / WINDOW[0])
+            frames = [Image.open(shot).convert("RGB").resize((GIF_WIDTH, height), Image.LANCZOS)
+                      for shot in shots]
+    finally:
+        for process in stand_ins:
+            process.terminate()
+    if asked:
+        raise SystemExit("the page asked for a revival while it was being recorded")
+
+    # One palette for every frame, and no dithering: with a palette per frame even
+    # the parts that do not move change colour index from one frame to the next,
+    # and the GIF has to store them again every time.
+    board = Image.new("RGB", (GIF_WIDTH, height * 8))
+    for slot, frame in enumerate(frames[:: max(1, len(frames) // 8)][:8]):
+        board.paste(frame, (0, height * slot))
+    palette = board.quantize(colors=255, method=Image.Quantize.MEDIANCUT)
+    indexed = [frame.quantize(palette=palette, dither=Image.Dither.NONE) for frame in frames]
+
+    durations = [DEAL_STEP_MS * 2] * len(indexed)
+    durations[0], durations[-1] = DEAL_HOLD_MS
+    out = ASSETS / "deal.gif"
+    indexed[0].save(out, save_all=True, append_images=indexed[1:], duration=durations, loop=0,
+                    optimize=True, disposal=1)
+    print(f"  {_pretty(out)} ({out.stat().st_size // 1024} KB, {len(frames)} frames)")
+
+
 #: The design canvases, and the picture each is laid out into.
 DESIGNS = (("design", "design/interface.png"), ("design/mascots", "design/mascots/cast.png"))
 
@@ -246,6 +329,7 @@ def build_design() -> None:
 
 
 TARGETS = {
+    "deal": build_deal,
     "design": build_design,
     "icon": build_icon,
     "card": build_card,

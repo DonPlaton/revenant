@@ -72,7 +72,7 @@ def test_one_helper_decides_whether_anything_moves(page: str) -> None:
     same answer, so every flourish asks the same question."""
     assert "const stillness = () => Boolean(document.documentElement.dataset.still) || calm.matches;" in page
     assert 'const calm = matchMedia("(prefers-reduced-motion: reduce)");' in page
-    for gated in ("function run(which) {\n    if (stillness()) return;",
+    for gated in ("function run(which) {\n    if (stillness() || FRAME !== null) return;",
                   "if (stillness() || performance.now() - struck < 55) return;",
                   "if (typed || stillness()) {"):
         assert gated in page, f"ungated: {gated}"
@@ -900,3 +900,17 @@ def test_a_row_says_what_the_session_is_called(page: str) -> None:
     just "continue". The service already picks the best of the two."""
     assert "escape(s.summary || s.lastPrompt || s.firstPrompt" in page
     assert "Every session in this window is still running" not in page, "running sessions are listed, held"
+
+
+def test_a_recorded_frame_never_asks_for_a_revival(page: str) -> None:
+    """The README's recording of the deal is made by asking the page for frozen
+    frames. Whatever the page does in that mode, it must not press REVIVE or
+    talk to the service, or recording the demo would open terminals."""
+    body = page.split("  function freeze(at) {", 1)[1].split("\n  }\n", 1)[0]
+    assert "window.requestAnimationFrame = () => 0;" in body, "the scene's own clock never starts"
+    for forbidden in ("api(", "el.raise", ".click(", "/api/"):
+        assert forbidden not in body, forbidden
+    assert "deal([...chosen], null)" in body, "no window to place, so no /api/place either"
+    assert "if (FRAME === null) guard = setTimeout" in page
+    build = (PAGE.parents[1] / "assets" / "src" / "build.py").read_text(encoding="utf-8")
+    assert "backend.revive = refuse" in build, "the recording's service refuses a revival outright"
