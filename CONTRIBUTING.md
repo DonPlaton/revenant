@@ -7,7 +7,7 @@ Small project, simple rules.
 ```bash
 git clone https://github.com/DonPlaton/revenant
 cd revenant
-python -m pytest tests -q     # 456 tests, no network, no real session touched
+python -m pytest tests -q     # no network, no real session touched
 python revenant.py --since 7d # the command line
 python revenant_gui.py        # the desktop app
 ```
@@ -43,6 +43,15 @@ Subclass `Agent` in `revenant_agents.py` and add it to the `AGENTS` registry. Yo
 - `live_registry()`, if the agent records which sessions are running; otherwise set
   `live_window`, how many seconds of recent activity mark a session as possibly open
 - the resume command template, and the process names a live session runs under
+
+File-based readers inherit `sources()`, which wraps each transcript in a `SessionSource`.
+Agents backed by a shared database override it to supply one source per conversation, including
+metadata, prompts, title and its individual activity timestamp. Override `activity()` as well
+so the check just before revival uses that timestamp rather than the shared database's mtime.
+Use `_query()` for SQLite reads: it opens existing databases in read-only mode, preserves WAL
+visibility, and falls back when a schema or database is unreadable. Never migrate agent stores.
+Set `history_is_partial` when a prompt index can omit turns from another client, so a recent
+transcript is checked before trusting the index's last prompt.
 
 Open an issue first so we can agree on the shape. Bring a real transcript, redacted.
 

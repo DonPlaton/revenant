@@ -37,7 +37,7 @@ import revenant_terminals as terminals
 from revenant_agents import AGENTS, Agent, get_agent, installed_agents, is_meaningful
 from revenant_agents import DEFAULT_AGENT as CLAUDE_CODE
 
-__version__ = "1.6.2"
+__version__ = "1.7.0"
 APP_NAME = "Revenant"
 
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhdw])$", re.IGNORECASE)
@@ -382,10 +382,8 @@ def refresh_liveness(sessions: Sequence[Session], root_for) -> None:
         agent = session.agent
         if agent.key not in registries:
             registries[agent.key] = load_live_registry(root_for(agent), agent=agent)
-        try:
-            mtime = datetime.fromtimestamp(session.transcript.stat().st_mtime, tz=timezone.utc)
-        except OSError:
-            mtime = datetime.min.replace(tzinfo=timezone.utc)
+        mtime = agent.activity(root_for(agent), session.session_id, session.transcript)
+        mtime = mtime or datetime.min.replace(tzinfo=timezone.utc)
         _mark_live(session, registries[agent.key].get(session.session_id), mtime, now)
 
 
@@ -421,17 +419,13 @@ def scan_sessions(
     live = load_live_registry(root, agent=agent)
     sessions: list[Session] = []
 
-    for transcript in agent.transcripts(root):
-        slug = agent.group(transcript)
+    for source in agent.sources(root, since=since, until=until):
+        transcript = source.transcript
+        slug = source.group
         if slug_filter and slug_filter.lower() not in slug.lower():
             continue
-        try:
-            stat = transcript.stat()
-        except OSError:
-            continue
-        mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
-
-        session_id = agent.session_id(transcript)
+        mtime = source.modified
+        session_id = source.session_id
         entries = history.get(session_id, [])
         last_active = max([mtime, *(item[0] for item in entries)]) if entries else mtime
         if last_active < since or (until and last_active > until):
@@ -443,10 +437,12 @@ def scan_sessions(
             project_slug=slug,
             agent=agent,
             last_active=last_active,
-            size_bytes=stat.st_size,
+            size_bytes=source.size,
+            title=source.title,
         )
 
-        meta = agent.head(transcript)
+        meta = source.metadata if source.prompts is not None else agent.head(transcript)
+        meta.update({key: value for key, value in source.metadata.items() if value})
         if meta.get("cwd"):
             session.cwd = Path(meta["cwd"])
         session.version = meta.get("version")
@@ -462,12 +458,24 @@ def scan_sessions(
         if meaningful:
             session.turns = len(meaningful)
             session.first_prompt, session.last_prompt = meaningful[0], meaningful[-1]
+            if agent.history_is_partial:
+                first, last, count, complete = agent.tail(transcript)
+                # An old CLI/projection index must not mask a newer desktop turn.
+                if count and mtime >= entries[-1][0]:
+                    session.last_prompt = last
+                    if complete and count >= len(meaningful):
+                        session.first_prompt = first
+                        session.turns = count
+                    elif not complete and last != meaningful[-1]:
+                        session.turns = None
         else:
             # An index that holds a session's slash commands and nothing else is
             # not the same as a session with nothing in it, so the transcript
             # still gets read rather than the session being recorded as empty and
             # dropped for having too few turns.
-            first, last, count, complete = agent.tail(transcript)
+            first, last, count, complete = agent.tail(transcript) if source.prompts is None else source.prompts
+            if not count and source.fallback_prompt:
+                first, last, count, complete = source.fallback_prompt, source.fallback_prompt, 1, False
             session.first_prompt, session.last_prompt = first, last
             # An incomplete tail gives only a lower bound, so leave it unknown.
             session.turns = count if complete else None
@@ -1263,7 +1271,7 @@ def main(argv: Sequence[str] | None = None, *, stream=None) -> int:
     if args.command == "gui":
         from revenant_gui import run_gui  # lazy: the CLI itself stays dependency-free
 
-        return run_gui(agent=agent, root=args.root)
+        return run_gui(agent=agent, root=args.root, combined=args.agent is None)
 
     try:
         since = parse_when(args.since)

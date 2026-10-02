@@ -90,8 +90,8 @@ def codex_root(tmp_path: Path) -> Path:
 # --------------------------------------------------------------------------- #
 
 
-def test_both_agents_are_registered() -> None:
-    assert set(agents.AGENTS) == {"claude-code", "codex"}
+def test_all_agents_are_registered() -> None:
+    assert set(agents.AGENTS) == {"claude-code", "codex", "opencode"}
     assert agents.DEFAULT_AGENT.key == "claude-code"
 
 

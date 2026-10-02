@@ -14,7 +14,7 @@
   --bg:#1c1a18; --ink:#eeeae1; --ink-2:#a9a297; --ink-3:#7a746b;
   --rule:#35322d; --rule-soft:#282521; --wash:#221f1c;
   --ember:#dd7b52; --ember-dim:rgba(221,123,82,.10); --ember-line:rgba(221,123,82,.42);
-  --held:#8aa878; --codex:#79a6b8;
+  --held:#8aa878; --codex:#79a6b8; --opencode:#b5a5cf;
 
   --mono:"Cascadia Mono","SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
   --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
@@ -231,6 +231,7 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 .name{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .who{font-size:9.5px;letter-spacing:.18em;color:var(--ink-3);flex:0 0 auto}
 .who[data-agent=codex]{color:var(--codex)}
+.who[data-agent=opencode]{color:var(--opencode)}
 .flag{font-size:9.5px;letter-spacing:.18em;color:var(--held);flex:0 0 auto;white-space:nowrap}
 .path{display:block;font-size:10.5px;color:var(--ink-3);margin-top:3px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
@@ -671,6 +672,7 @@ html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animatio
   const RUNS = {
     "claude-code": { lead: "runner", trail: "hunter", warm: false },
     codex: { lead: "hunter", trail: "runner", warm: true },
+    opencode: { lead: "runner", trail: "hunter", warm: false },
     all: { meet: true },
   };
 
@@ -923,7 +925,7 @@ html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animatio
     // Screenshots and recordings name the default place, never the temporary
     // folder the synthetic sessions they are made from sits in.
     el.where.textContent = document.documentElement.dataset.still || FRAME !== null
-      ? `Reading transcripts in ${data.agent === "codex" ? "~/.codex" : "~/.claude"}`
+      ? `Reading transcripts in ${{codex: "~/.codex", opencode: "~/.local/share/opencode", all: "several places"}[data.agent] || "~/.claude"}`
       : `Reading transcripts in ${data.root}`;
 
     const all = data.sessions || [];
@@ -1294,7 +1296,7 @@ html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animatio
     const floor = host.querySelector(".sh-floor");
     const shadow = host.querySelector(".sh-shadow");
 
-    const accent = (i) => `var(--${opts.agents[i] === "codex" ? "codex" : "ember"})`;
+    const accent = (i) => `var(--${{codex: "codex", opencode: "opencode"}[opts.agents[i]] || "ember"})`;
     const add = (tag, cls) => {
       const node = document.createElement(tag);
       node.className = cls;
@@ -1635,7 +1637,7 @@ html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animatio
     // The tab in front is the last one opened, and the window types the command
     // that resumes it, in its own agent's words and colour.
     const front = SHOWN - 1;
-    const typed = opts.agents[front] === "codex" ? "codex resume" : "claude --resume";
+    const typed = {codex: "codex resume", opencode: "opencode --session"}[opts.agents[front]] || "claude --resume";
     if (win) {
       win.style.setProperty("--accent", accent(front));
       screen.said.textContent = opts.names[front] || "";

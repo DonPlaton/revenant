@@ -90,10 +90,11 @@ class Backend:
     #: UI fires several requests per click, so an identical scan is reused for a moment.
     CACHE_SECONDS = 8.0
 
-    def __init__(self, *, agent: Agent = CLAUDE_CODE, root: str | None = None) -> None:
+    def __init__(self, *, agent: Agent = CLAUDE_CODE, root: str | None = None, combined: bool = True) -> None:
         self.agent = agent
         self.root = revenant.config_root(root, agent=agent)
         self.explicit_root = root is not None
+        self.combined = combined
         self.token = secrets.token_urlsafe(24)
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -122,6 +123,13 @@ class Backend:
             return [self.agent]
         installed = agent_registry.installed_agents()
         return installed or [self.agent]
+
+    def default_key(self) -> str:
+        """Show every detected agent when the app opens without an explicit root."""
+        if not self.combined:
+            return self.agent.key
+        available = self.available()
+        return "all" if len(available) > 1 else available[0].key
 
     def _scan(self, days: float, which: str) -> list[revenant.Session]:
         """Scan back `days` for one agent or all of them, reusing a recent scan."""
@@ -169,7 +177,7 @@ class Backend:
         return self._layouts
 
     def sessions(self, *, days: float, which: str = "", include_live: bool = True) -> dict:
-        which = which or self.agent.key
+        which = which or self.default_key()
         choices = self.choices()
         if which not in {c["key"] for c in choices}:
             which = choices[0]["key"] if choices else self.agent.key
@@ -207,7 +215,7 @@ class Backend:
     def _by_id(self, ids: list[str], *, days: float, which: str = "") -> list[revenant.Session]:
         if not ids:
             return []
-        by_id = {s.session_id: s for s in self._scan(days, which or self.agent.key)}
+        by_id = {s.session_id: s for s in self._scan(days, which or self.default_key())}
         return [by_id[i] for i in dict.fromkeys(ids) if i in by_id]
 
     # -- placing -------------------------------------------------------- #
@@ -665,7 +673,7 @@ def _browser_binary() -> str | None:
     return next((p for p in paths if Path(p).exists()), None)
 
 
-def run_gui(*, agent: Agent = CLAUDE_CODE, root: str | None = None) -> int:
+def run_gui(*, agent: Agent = CLAUDE_CODE, root: str | None = None, combined: bool = True) -> int:
     """Open the desktop app. Returns a process exit code."""
     if not (UI_DIR / "index.html").is_file():
         print(
@@ -675,7 +683,7 @@ def run_gui(*, agent: Agent = CLAUDE_CODE, root: str | None = None) -> int:
         )
         return 1
 
-    backend = Backend(agent=agent, root=root)
+    backend = Backend(agent=agent, root=root, combined=combined)
     server, url = serve(backend)
 
     try:

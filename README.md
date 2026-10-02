@@ -26,7 +26,7 @@ to your clipboard for you to paste yourself. Nine sessions is nine trips through
 terminals you open by hand. Codex has no picker that spans directories at all.
 
 Revenant lists every session that was active in a time range you choose, across every directory
-and both agents, and opens the ones you pick: each in a tab of one terminal window, or in a window
+and every supported agent, and opens the ones you pick: each in a tab of one terminal window, or in a window
 of its own if you prefer, already in its own directory, already resumed.
 
 <div align="center">
@@ -113,7 +113,7 @@ curl -fsSL https://raw.githubusercontent.com/DonPlaton/revenant/main/install.sh 
 
 `--cli` gives you a `revenant` command. On Windows it adds the install folder to your user PATH.
 On macOS and Linux it writes `~/.local/bin/revenant`, but will not overwrite a `revenant` that
-another tool put there. `--ref v1.6.2` (`-Ref` on Windows) installs a specific version rather than
+another tool put there. `--ref v1.7.0` (`-Ref` on Windows) installs a specific version rather than
 the current main.
 
 On Windows it registers itself under Settings, Apps, so you can remove it there like anything
@@ -142,8 +142,8 @@ python revenant.py --since 7d
 The app opens on the last seven days, with every session that can come back already marked. Drag
 the caret along the time ruler to look further back or less far, click a row (or press `Space` on
 it) to leave it out, and hit REVIVE. The switch next to the button says where they land: tabs of
-one window, or a window each. When both agents are installed, a switcher along the top shows
-Claude Code, Codex or both.
+one window, or a window each. When several agents are detected, the app opens on **All**.
+The switcher along the top lets you narrow it to Claude Code, Codex or OpenCode.
 
 Double-click a row, or press `O` on it, to open its folder. `Enter` revives what is marked, `Ctrl+R`
 rescans, and `Esc` closes the app. Bring back six or more and they are dealt out by an animation
@@ -164,6 +164,7 @@ revenant --since 7d --pick --launch  # choose from the last week, then open them
 revenant --since 6h --launch         # reopen them as tabs of one window
 revenant --launch --layout windows   # a terminal window per session instead
 revenant --all-agents                # every agent installed on this machine
+revenant --agent opencode --since 7d # OpenCode sessions across every project
 revenant --print                     # paste-ready cd and resume command pairs
 revenant --emit revive.sh            # a launcher script you can rerun any time
 revenant snapshot                    # optional: record what is open now, for --from-snapshot
@@ -181,7 +182,7 @@ Choosing sessions:
 |---|---|
 | `--since 24h` | range start: `30s`, `90m`, `24h`, `7d`, `2w`, `today`, `all`, `2026-09-01`, `2026-09-01T10:30` (default `24h`) |
 | `--until <time>` | range end, same formats |
-| `--agent <key>` | `claude-code` or `codex` |
+| `--agent <key>` | `claude-code`, `codex` or `opencode` |
 | `--all-agents` | scan every agent installed here and merge the results |
 | `--dir <text>` | only sessions whose path contains this, repeatable |
 | `--slug <text>` | only transcript folders whose name contains this |
@@ -241,7 +242,23 @@ next terminal on the list if even that will not run.
 | agent | transcripts | how a live session is spotted |
 |---|---|---|
 | Claude Code | `~/.claude/projects/<slug>/<uuid>.jsonl` | it registers itself, so this is exact |
-| Codex | `~/.codex/sessions/<date>/rollout-*.jsonl` | no registry, so anything touched in the last two minutes is held back |
+| Codex | `~/.codex/sessions/**/rollout-*.jsonl`, `archived_sessions`, paths in `state_*.sqlite` | no registry, so anything touched in the last two minutes is held back |
+| OpenCode | `~/.local/share/opencode/opencode.db`, or legacy `storage/session` JSON files | per-session activity in the last two minutes is held back |
+
+Codex's desktop and editor sessions are read alongside CLI sessions. Revenant reads thread
+metadata from `state_*.sqlite` and prompts from `thread_history_1.sqlite`, with JSONL transcripts
+and `history.jsonl` as fallbacks. This also recovers renamed threads, imported rollout locations,
+and sessions whose first prompt is buried under a long tool run.
+
+OpenCode stores conversations for every project in one database. Revenant reads titles, working
+directories and user messages directly, including child and archived sessions, and resumes each
+with `opencode --session <id>`. Its activity check uses each session's timestamp, so working in
+one project does not hold back every other session. Legacy JSON sessions are also supported and
+deduplicated against migrated database entries. `XDG_DATA_HOME` selects a different data folder;
+`--agent opencode --root <folder>` can read another OpenCode data directory.
+
+SQLite databases are opened in read-only mode, including uncheckpointed WAL data. Revenant does
+not launch an agent to discover its sessions and does not run database migrations.
 
 Each row shows the session's name: the one you set with `/rename`, or else the title the agent
 generated from your first prompt. A session with no name shows your last prompt. That is usually
@@ -316,7 +333,10 @@ id, so an id that some unrelated program has since taken over does not hold a se
 errs one way on purpose: a process it cannot read, a binary an installer renamed mid-update, a name
 the kernel truncated, all count as the agent and keep the session from being revived. Being wrong
 that way costs you a row. Being wrong the other way costs you a transcript. Codex keeps no
-registry, so a rollout file touched in the last two minutes is treated as possibly open.
+registry, so a rollout file or thread updated in the last two minutes is treated as possibly open.
+OpenCode uses the same interval against the individual session's activity, never the shared
+database file's modification time. These are activity heuristics: an idle agent can remain open
+without writing anything, so they cannot establish that every older session has exited.
 
 The desktop backend binds to `127.0.0.1` on an ephemeral port. It mints a token at startup and
 requires it on every request, and rejects any request whose `Host` header is not that exact
@@ -343,7 +363,7 @@ yet, or had not run since you opened the sessions that matter.
 
 | | platform | interface | needs a daemon first | agents |
 |---|---|---|---|---|
-| **Revenant** | **Windows, macOS, Linux** | **desktop app** and CLI | **no** | Claude Code, Codex |
+| **Revenant** | **Windows, macOS, Linux** | **desktop app** and CLI | **no** | Claude Code, Codex, OpenCode |
 | [ai-session-manager](https://github.com/daniel-farina/ai-session-manager) | macOS, Linux | web app, copies a command | no | **9** |
 | [SnowSky1/claude-session-restore](https://github.com/SnowSky1/claude-session-restore) | Windows | desktop shortcut | yes, every 2 min | Claude Code |
 | [Supersynergy/claude-session-restore](https://github.com/Supersynergy/claude-session-restore) | macOS, some Linux | CLI and MCP | yes | Claude Code |
@@ -358,8 +378,8 @@ Revenant needs nothing installed before the crash, because it reads the transcri
 already wrote. Install it afterwards and it still finds everything.
 
 Pick something else if you live in tmux, if you want a monitor for running agents, or if you use
-one of the seven agents Revenant does not read yet. `ai-session-manager` is the closest neighbour:
-it reads nine agents and hands you a command to paste, where Revenant reads two and opens the
+an agent Revenant does not read yet. `ai-session-manager` is the closest neighbour:
+it reads nine agents and hands you a command to paste, where Revenant reads three and opens the
 terminals itself, on Windows too.
 
 ## Development
@@ -368,11 +388,13 @@ terminals itself, on Windows too.
 python -m pytest tests -q
 ```
 
-The 456 tests use no network, touch no real session and open no terminal. They run against a
+The tests use no network, touch no real session and open no terminal. They run against a
 synthetic config directory in `tmp_path`, and any test that tries to start a program other than
 Python, node or `ps` fails. They cover:
 
-- both agents' file formats and session naming
+- all three agents' file formats and session naming, including SQLite and legacy JSON stores
+- Codex's projected desktop history, archives, imported paths and multipart prompts
+- OpenCode's per-session activity, child sessions, migration deduplication and WAL reads
 - live process detection, id reuse, and the refusal to relaunch a running session
 - the argv of all fourteen terminal backends against both layouts on all three platforms
 - quoting of paths with spaces and apostrophes, and corrupt or truncated transcripts

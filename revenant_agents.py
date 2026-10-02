@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import sqlite3
 from collections import defaultdict
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -221,6 +223,74 @@ def _tail_records(path: Path, *, window: int) -> Iterator[dict]:
             yield record
 
 
+def _query(path: Path, sql: str, parameters: tuple = ()) -> list[dict]:
+    """Read a database, including its WAL, without creating or migrating it."""
+    try:
+        if not path.is_file():
+            return []
+        connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.2)
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only = ON")
+            return [dict(row) for row in connection.execute(sql, parameters)]
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error):
+        # Old schemas, interrupted migrations and locked databases must not hide
+        # the transcripts that can still be read independently.
+        return []
+
+
+def _object(value: object) -> dict:
+    """Decode an optional JSON object from disk; damaged records are empty."""
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _read_object(path: Path) -> dict:
+    try:
+        return _object(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError):
+        return {}
+
+
+def _user_text(content: object) -> str:
+    """Discard harness blocks before flattening a multipart user message."""
+    if isinstance(content, list):
+        texts = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            text = clean_prompt(part.get("text"))
+            if is_meaningful(text) and not text.startswith("# AGENTS.md instructions"):
+                texts.append(text)
+        content = " ".join(texts)
+    text = clean_prompt(content)
+    return text if is_meaningful(text) and not text.startswith("# AGENTS.md instructions") else ""
+
+
+@dataclass
+class SessionSource:
+    """One conversation backed by a transcript or a row in a shared database."""
+
+    session_id: str
+    transcript: Path
+    group: str
+    modified: datetime
+    size: int = 0
+    metadata: dict = dataclass_field(default_factory=dict)
+    prompts: tuple[str, str, int, bool] | None = None
+    title: str = ""
+    fallback_prompt: str = ""
+
+
 class Agent:
     """One coding agent. Subclasses fill in the file formats."""
 
@@ -240,6 +310,8 @@ class Agent:
     process_images = frozenset({"node", "node.exe"})
     #: One line explaining how liveness is decided, shown in the UI.
     liveness_note = ""
+    #: Some agents index only CLI input while also accepting desktop/editor turns.
+    history_is_partial = False
 
     def __init__(self, *, process_images: Iterable[str] | None = None) -> None:
         if process_images is not None:
@@ -275,6 +347,23 @@ class Agent:
 
     def transcripts(self, root: Path) -> Iterator[Path]:
         yield from root.glob(self.transcript_glob)
+
+    def sources(self, root: Path, *, since: datetime, until: datetime | None = None) -> Iterator[SessionSource]:
+        """File-backed sessions; database agents override this adapter."""
+        for path in self.transcripts(root):
+            try:
+                info = path.stat()
+                modified = datetime.fromtimestamp(info.st_mtime, tz=timezone.utc)
+            except (OSError, ValueError, OverflowError):
+                continue
+            yield SessionSource(self.session_id(path), path, self.group(path), modified, info.st_size)
+
+    def activity(self, root: Path, session_id: str, transcript: Path) -> datetime | None:
+        """Per-session activity for the final liveness check, never a shared DB mtime."""
+        try:
+            return datetime.fromtimestamp(transcript.stat().st_mtime, tz=timezone.utc)
+        except (OSError, ValueError, OverflowError):
+            return None
 
     def session_id(self, transcript: Path) -> str:
         return transcript.stem
@@ -493,6 +582,66 @@ class Codex(Agent):
     live_window = 120.0
     process_images = frozenset({"codex.exe", "codex", "node.exe", "node"})
     liveness_note = "Codex keeps no registry, so anything touched in the last 2 minutes is held back"
+    history_is_partial = True
+
+    def transcripts(self, root: Path) -> Iterator[Path]:
+        for directory in ("sessions", "archived_sessions"):
+            yield from (root / directory).rglob("rollout-*.jsonl")
+
+    def root_of(self, transcript: Path) -> Path:
+        for parent in transcript.parents:
+            if parent.name in {"sessions", "archived_sessions"}:
+                return parent.parent
+        return transcript.parent
+
+    def activity(self, root: Path, session_id: str, transcript: Path) -> datetime | None:
+        modified = super().activity(root, session_id, transcript)
+        row = next((row for row in self._threads(root) if row.get("id") == session_id), {})
+        updated = from_epoch(row.get("updated_at_ms")) or from_epoch(row.get("updated_at"))
+        return max(modified, updated) if modified and updated else modified or updated
+
+    @staticmethod
+    def _threads(root: Path) -> list[dict]:
+        databases = sorted(root.glob("state_*.sqlite"), key=lambda p: int(p.stem.split("_")[-1])
+                           if p.stem.split("_")[-1].isdigit() else -1, reverse=True)
+        for database in databases:
+            rows = _query(database, "SELECT * FROM threads")
+            if rows:
+                return rows
+        return []
+
+    def sources(self, root: Path, *, since: datetime, until: datetime | None = None) -> Iterator[SessionSource]:
+        threads = {row["id"]: row for row in self._threads(root) if row.get("id")}
+        indexed_paths = {Path(row["rollout_path"]) if Path(row["rollout_path"]).is_absolute()
+                         else root / row["rollout_path"]: row
+                         for row in threads.values() if isinstance(row.get("rollout_path"), str)}
+        paths = [*indexed_paths, *self.transcripts(root)]
+        seen: set[str] = set()
+        for path in dict.fromkeys(paths):
+            row = indexed_paths.get(path, threads.get(self.session_id(path), {}))
+            session_id = row.get("id") or self.session_id(path)
+            if row and (not isinstance(session_id, str) or not _UUID.fullmatch(session_id)):
+                continue
+            try:
+                info = path.stat()
+                modified = datetime.fromtimestamp(info.st_mtime, tz=timezone.utc)
+            except (OSError, ValueError, OverflowError):
+                continue
+            if session_id in seen:
+                continue
+            seen.add(session_id)
+            # Desktop metadata can have a newer cwd and activity than the rollout.
+            updated = from_epoch(row.get("updated_at_ms")) or from_epoch(row.get("updated_at"))
+            modified = max(modified, updated) if updated else modified
+            metadata = {"cwd": row.get("cwd"), "version": row.get("cli_version"),
+                        "gitBranch": row.get("git_branch"),
+                        "started": from_epoch(row.get("created_at_ms")) or from_epoch(row.get("created_at"))}
+            fallback = _user_text(row.get("first_user_message"))
+            # Preserve evidence of a real conversation even when a long tool run
+            # pushes its prompt outside the bounded transcript search.
+            yield SessionSource(session_id, path, self.group(path), modified, info.st_size,
+                                metadata, title=clean_prompt(row.get("name") or row.get("title"), limit=80),
+                                fallback_prompt=fallback)
 
     def session_id(self, transcript: Path) -> str:
         match = _UUID.search(transcript.stem)
@@ -508,7 +657,7 @@ class Codex(Agent):
         for record in _records(transcript, limit=4):
             if record.get("type") != "session_meta":
                 continue
-            payload = record.get("payload") or {}
+            payload = _object(record.get("payload"))
             if payload.get("cwd"):
                 meta["cwd"] = payload["cwd"]
             if payload.get("cli_version"):
@@ -516,30 +665,24 @@ class Codex(Agent):
             started = from_iso(payload.get("timestamp")) or from_iso(record.get("timestamp"))
             if started:
                 meta["started"] = started
+            git = _object(payload.get("git"))
+            if git.get("branch"):
+                meta["gitBranch"] = git["branch"]
             break
         return meta
 
     @staticmethod
     def _prompt_of(record: dict) -> str:
         """The text a person typed, or "" for anything else in the rollout."""
-        payload = record.get("payload") or {}
+        payload = _object(record.get("payload"))
         if record.get("type") == "event_msg" and payload.get("type") == "user_message":
-            return clean_prompt(payload.get("message") or payload.get("text"))
+            return _user_text(payload.get("message") or payload.get("text"))
         if (
             record.get("type") == "response_item"
             and payload.get("type") == "message"
             and payload.get("role") == "user"
         ):
-            content = payload.get("content")
-            if isinstance(content, list):
-                content = " ".join(
-                    part.get("text", "") for part in content if isinstance(part, dict)
-                )
-            text = clean_prompt(content)
-            # Codex replays the AGENTS.md instructions as the first user message.
-            if text.startswith("# AGENTS.md instructions"):
-                return ""
-            return text
+            return _user_text(payload.get("content"))
         return ""
 
     def _prompts_near_the_end(self, transcript: Path, window: int) -> list[str]:
@@ -550,6 +693,7 @@ class Codex(Agent):
         same prompt rather than a second one.
         """
         prompts: list[str] = []
+        previous_kind: str | None = None
         for line in _tail_lines(transcript, window=window, containing=_CODEX_PROMPT_HINTS):
             try:
                 record = json.loads(line.decode("utf-8", errors="replace"))
@@ -558,8 +702,15 @@ class Codex(Agent):
             if not isinstance(record, dict):
                 continue
             text = self._prompt_of(record)
-            if is_meaningful(text) and text != (prompts[-1] if prompts else None):
-                prompts.append(text)
+            if is_meaningful(text):
+                kind = record.get("type")
+                # Only the event/response pair is a duplicate. Typing the same
+                # prompt on two separate turns still counts as two turns.
+                if prompts and text == prompts[-1] and previous_kind and previous_kind != kind:
+                    previous_kind = None
+                else:
+                    prompts.append(text)
+                    previous_kind = kind
         return prompts
 
     def tail(self, transcript: Path) -> tuple[str, str, int, bool]:
@@ -591,6 +742,19 @@ class Codex(Agent):
                 index[session_id].append((when, clean_prompt(record.get("text")), ""))
         for entries in index.values():
             entries.sort(key=lambda item: item[0])
+        projected: dict[str, list[tuple[datetime, str, str]]] = defaultdict(list)
+        for row in _query(root / "thread_history_1.sqlite",
+                          "SELECT thread_id, created_at_ms, item_json FROM thread_items "
+                          "WHERE item_type = 'userMessage' ORDER BY thread_id, rollout_ordinal"):
+            when = from_epoch(row.get("created_at_ms"))
+            text = _user_text(_object(row.get("item_json")).get("content"))
+            if when and text:
+                projected[row["thread_id"]].append((when, text, ""))
+        for session_id, entries in projected.items():
+            # The CLI history is sparse for desktop sessions. The projected
+            # history holds actual turns, without the event/response duplicates.
+            newer = [entry for entry in index.get(session_id, []) if entry[0] > entries[-1][0]]
+            index[session_id] = entries + newer
         return index
 
 
@@ -604,7 +768,118 @@ class Codex(Agent):
         return found
 
 
-AGENTS: dict[str, Agent] = {agent.key: agent for agent in (ClaudeCode(), Codex())}
+class OpenCode(Agent):
+    """OpenCode's shared SQLite store and the JSON store used before migration."""
+
+    key = "opencode"
+    label = "OpenCode"
+    home_relative = ".local/share/opencode"
+    transcript_glob = "storage/session/*/*.json"
+    resume_template = "opencode --session {id}"
+    live_window = 120.0
+    process_images = frozenset({"opencode", "opencode.exe", "bun", "bun.exe", "node", "node.exe"})
+    liveness_note = "OpenCode keeps no live registry; sessions active in the last 2 minutes are held back"
+
+    def config_dir(self, explicit: str | os.PathLike[str] | None = None) -> Path:
+        if explicit:
+            return Path(explicit).expanduser()
+        data_home = os.environ.get("XDG_DATA_HOME")
+        return Path(data_home).expanduser() / "opencode" if data_home else Path.home() / self.home_relative
+
+    def transcripts(self, root: Path) -> Iterator[Path]:
+        yield from (root / "storage" / "session").rglob("*.json")
+
+    def root_of(self, transcript: Path) -> Path:
+        if transcript.name == "opencode.db":
+            return transcript.parent
+        for parent in transcript.parents:
+            if parent.name == "storage":
+                return parent.parent
+        return transcript.parent
+
+    def head(self, transcript: Path) -> dict:
+        record = _read_object(transcript)
+        return {"cwd": record.get("directory"), "version": record.get("version"),
+                "started": from_epoch(_object(record.get("time")).get("created"))}
+
+    def title(self, transcript: Path) -> str:
+        return clean_prompt(_read_object(transcript).get("title"), limit=80)
+
+    @staticmethod
+    def _summary(prompts: list[str]) -> tuple[str, str, int, bool]:
+        return (prompts[0], prompts[-1], len(prompts), True) if prompts else ("", "", 0, True)
+
+    @staticmethod
+    def _part_text(part: dict) -> str:
+        if part.get("type") == "text" and not part.get("synthetic") and not part.get("ignored"):
+            return _user_text(part.get("text"))
+        return ""
+
+    def tail(self, transcript: Path) -> tuple[str, str, int, bool]:
+        storage = self.root_of(transcript) / "storage"
+        prompts: list[str] = []
+        for message in sorted((storage / "message" / transcript.stem).glob("*.json")):
+            record = _read_object(message)
+            if record.get("role") != "user":
+                continue
+            parts = [self._part_text(_read_object(part)) for part in
+                     sorted((storage / "part" / message.stem).glob("*.json"))]
+            text = _user_text(" ".join(part for part in parts if part))
+            if text:
+                prompts.append(text)
+        return self._summary(prompts)
+
+    def _database_prompts(self, database: Path, session_id: str) -> tuple[str, str, int, bool]:
+        rows = _query(database,
+                      "SELECT m.id AS message_id, p.data FROM message m JOIN part p ON p.message_id = m.id "
+                      "WHERE m.session_id = ? AND json_valid(m.data) "
+                      "AND json_extract(m.data, '$.role') = 'user' "
+                      "ORDER BY m.time_created, m.id, p.time_created, p.id", (session_id,))
+        messages: dict[str, list[str]] = {}
+        for row in rows:
+            text = self._part_text(_object(row.get("data")))
+            if text:
+                messages.setdefault(row["message_id"], []).append(text)
+        return self._summary([clean_prompt(" ".join(parts)) for parts in messages.values()])
+
+    def sources(self, root: Path, *, since: datetime, until: datetime | None = None) -> Iterator[SessionSource]:
+        database = root / "opencode.db"
+        rows = _query(database, "SELECT * FROM session")
+        seen = {row.get("id") for row in rows}
+        for row in rows:
+            session_id = row.get("id")
+            if not isinstance(session_id, str) or not re.fullmatch(r"ses_[a-zA-Z0-9]+", session_id):
+                continue
+            modified = from_epoch(row.get("time_updated")) or from_epoch(row.get("time_created"))
+            if not modified or modified < since or (until and modified > until):
+                continue
+            yield SessionSource(session_id, database, row.get("project_id") or "opencode", modified,
+                                metadata={"cwd": row.get("directory"), "version": row.get("version"),
+                                          "started": from_epoch(row.get("time_created"))},
+                                prompts=self._database_prompts(database, session_id),
+                                title=clean_prompt(row.get("title"), limit=80))
+        for transcript in self.transcripts(root):
+            record = _read_object(transcript)
+            session_id = record.get("id") or transcript.stem
+            if not isinstance(session_id, str) or session_id in seen or not re.fullmatch(r"ses_[a-zA-Z0-9]+", session_id):
+                continue
+            seen.add(session_id)
+            modified = from_epoch(_object(record.get("time")).get("updated"))
+            modified = modified or super().activity(root, session_id, transcript)
+            if not modified or modified < since or (until and modified > until):
+                continue
+            yield SessionSource(session_id, transcript, record.get("projectID") or transcript.parent.name,
+                                modified, metadata=self.head(transcript), prompts=self.tail(transcript),
+                                title=clean_prompt(record.get("title"), limit=80))
+
+    def activity(self, root: Path, session_id: str, transcript: Path) -> datetime | None:
+        if transcript.name == "opencode.db":
+            rows = _query(transcript, "SELECT time_updated FROM session WHERE id = ?", (session_id,))
+            return from_epoch(rows[0].get("time_updated")) if rows else None
+        return from_epoch(_object(_read_object(transcript).get("time")).get("updated")) or super().activity(root, session_id, transcript)
+
+
+AGENTS: dict[str, Agent] = {agent.key: agent for agent in (ClaudeCode(), Codex(), OpenCode())}
 DEFAULT_AGENT = AGENTS["claude-code"]
 
 

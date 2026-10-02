@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "revenant-sessions"
-version = "1.6.2"
+version = "1.7.0"
 description = "Bring your AI coding-agent sessions back from the dead after a crash"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["claude-code", "codex", "session", "recovery", "crash", "terminal", "developer-tools"]
+keywords = ["claude-code", "codex", "opencode", "session", "recovery", "crash", "terminal", "developer-tools"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
