@@ -144,6 +144,8 @@ the caret along the time ruler to look further back or less far, click a row (or
 it) to leave it out, and hit REVIVE. The switch next to the button says where they land: tabs of
 one window, or a window each. When several agents are detected, the app opens on **All**.
 The switcher along the top lets you narrow it to Claude Code, Codex or OpenCode.
+Session titles appear first for every agent, including sessions that are still running.
+Use **copy path** beside a folder to copy its full path, or select the path text and press `Ctrl+C`.
 
 Double-click a row, or press `O` on it, to open its folder. `Enter` revives what is marked, `Ctrl+R`
 rescans, and `Esc` closes the app. Bring back six or more and they are dealt out by an animation
@@ -259,9 +261,11 @@ deduplicated against migrated database entries. `XDG_DATA_HOME` selects a differ
 
 SQLite databases are opened in read-only mode, including uncheckpointed WAL data. Revenant does
 not launch an agent to discover its sessions and does not run database migrations.
+On Windows, OpenCode revival prefers its native executable (including the binary in an npm
+installation) so the terminal interface inherits the terminal directly.
 
 Each row shows the session's name: the one you set with `/rename`, or else the title the agent
-generated from your first prompt. A session with no name shows your last prompt. That is usually
+generated from your first prompt. A session with no name shows your first prompt. That is usually
 the difference between reading `continue` and reading `Fix the retry loop in the payment worker`.
 
 Sessions you start from the integrated terminal in VS Code, Cursor or Windsurf are ordinary CLI

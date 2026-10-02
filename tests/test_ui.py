@@ -902,6 +902,70 @@ def test_a_row_says_what_the_session_is_called(page: str) -> None:
     assert "Every session in this window is still running" not in page, "running sessions are listed, held"
 
 
+def test_titles_and_path_copy_remain_available_in_held_rows(page: str, tmp_path: Path) -> None:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    row = "function row(" + page.split("function row(", 1)[1].split("function toggle(", 1)[0]
+    escaping = "const escape = " + page.split("const escape = ", 1)[1].split("\n\n", 1)[0]
+    script = escaping + "\nconst chosen = new Set();\n" + row + r'''
+const assert = require("node:assert/strict");
+for (const agent of ["claude-code", "codex", "opencode"]) {
+  for (const live of [false, true]) {
+    const html = row({sessionId: "s", agent, title: 'Fix <parser> "today"',
+      label: "folder", cwd: "D:\\Coding\\a & b", summary: "session description", live}, 0, true);
+    assert.match(html, /class="name"[^>]*>Fix &lt;parser&gt; &quot;today&quot;<\/span>/);
+    assert.match(html, /session description/);
+    assert.match(html, /<button class="copy-path"/);
+    assert.doesNotMatch(html, /<button class="row/);
+    assert.doesNotMatch(html, /<script/);
+  }
+}
+const unnamed = row({sessionId: "s", label: "folder", firstPrompt: "Find the bug"}, 0, false);
+assert.match(unnamed, /class="name"[^>]*>Find the bug<\/span>/);
+assert.doesNotMatch(unnamed, /copy-path/);
+'''
+    target = tmp_path / "rows.js"
+    target.write_text(script, encoding="utf-8")
+    result = subprocess.run([node, str(target)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
+def test_clipboard_fallback_reports_failure_and_restores_focus(page: str, tmp_path: Path) -> None:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    helper = "async function copyText(" + page.split("async function copyText(", 1)[1].split('$("copy")', 1)[0]
+    script = r'''
+const assert = require("node:assert/strict");
+let removed = 0, focused = 0, written = "", permitted = true;
+const document = {
+  activeElement: {focus() {focused++;}},
+  body: {appendChild() {}},
+  createElement() {return {style: {}, select() {}, remove() {removed++;}};},
+  execCommand() {return permitted;},
+};
+Object.defineProperty(globalThis, "navigator", {value: {clipboard: {
+  async writeText(text) {written = text; throw new Error("denied");}
+}}, configurable: true});
+''' + helper + r'''
+(async () => {
+  await copyText("D:\\Coding\\folder");
+  assert.equal(written, "D:\\Coding\\folder");
+  assert.equal(removed, 1);
+  assert.equal(focused, 1);
+  permitted = false;
+  await assert.rejects(copyText("path"));
+  assert.equal(removed, 2);
+  assert.equal(focused, 2);
+})();
+'''
+    target = tmp_path / "clipboard.js"
+    target.write_text(script, encoding="utf-8")
+    result = subprocess.run([node, str(target)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
 def test_a_recorded_frame_never_asks_for_a_revival(page: str) -> None:
     """The README's recording of the deal is made by asking the page for frozen
     frames. Whatever the page does in that mode, it must not press REVIVE or

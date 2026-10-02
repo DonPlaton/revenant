@@ -51,6 +51,8 @@ class Job:
     label: str
     cwd: str
     command: str
+    #: A native Windows TUI must inherit the terminal directly, without a shell.
+    argv: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -616,6 +618,8 @@ class WindowsTerminal(Terminal):
             argv = ["new-tab", "--title", wt_text(job.label), "-d", wt_text(job.cwd)]
             if profile:
                 argv += ["-p", profile]
+            if job.argv:
+                return argv + [wt_text(part) for part in job.argv]
             return argv + [shell, "-NoExit", "-Command", wt_text(job.command)]
 
         if self.settle(layout) == LAYOUT_WINDOWS:
@@ -674,7 +678,7 @@ class WindowsConsole(Terminal):
         shell = _powershell()
         return Plan(
             self.key,
-            [[shell, "-NoExit", "-Command", job.command] for job in jobs],
+            [list(job.argv) if job.argv else [shell, "-NoExit", "-Command", job.command] for job in jobs],
             self.demoted(layout),
             cwds=[job.cwd for job in jobs],
             new_console=True,

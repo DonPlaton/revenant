@@ -205,6 +205,7 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 }
 
 .row{
+  cursor:pointer;text-align:left;
   position:relative;width:100%;display:grid;
   grid-template-columns:62px 24px minmax(0,1fr) 58px;align-items:start;
   padding:10px 0 11px;border-bottom:1px solid var(--rule-soft);
@@ -236,6 +237,10 @@ input[type=range]::-moz-range-thumb{width:1px;height:26px;border:0}
 .path{display:block;font-size:10.5px;color:var(--ink-3);margin-top:3px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
 .row:hover .path{color:var(--ink-2)}
+.path-line{display:flex;align-items:baseline;gap:10px;min-width:0}
+.path-line .path{flex:1;min-width:0;user-select:text}
+.copy-path{flex:0 0 auto;font-size:10px;color:var(--ink-2);padding:2px 4px}
+.copy-path:hover{color:var(--ember)}
 .said{font-family:var(--serif);font-style:italic;font-size:13px;line-height:1.4;color:var(--ink-2);
   margin-top:5px;text-wrap:pretty;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
   overflow:hidden}
@@ -1007,18 +1012,39 @@ html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animatio
       const many = new Set(sessions.map((s) => s.agent)).size > 1;
       el.rows.innerHTML = sessions.map((s, i) => row(s, i, many)).join("");
       el.rows.querySelectorAll(".row").forEach((node) => {
-        if (node.dataset.held === "true") return;
-        node.addEventListener("click", () => toggle(node.dataset.id));
-        node.addEventListener("dblclick", () => reveal(node));
+        const copy = node.querySelector(".copy-path");
+        if (copy) {
+          copy.addEventListener("click", async (event) => {
+            event.stopPropagation();
+            const session = sessions.find((s) => s.sessionId === node.dataset.id);
+            try {
+              await copyText(session.cwd);
+              word("Path on the clipboard.");
+            } catch { word("Could not copy the path. Select it and press Ctrl+C.", true); }
+          });
+          copy.addEventListener("dblclick", (event) => event.stopPropagation());
+          copy.addEventListener("keydown", (event) => event.stopPropagation());
+        }
+        node.addEventListener("click", () => {
+          if (window.getSelection()?.toString()) return;
+          if (node.dataset.held !== "true") toggle(node.dataset.id);
+        });
+        node.addEventListener("dblclick", (event) => {
+          if (!event.target.closest(".path")) reveal(node);
+        });
         node.addEventListener("keydown", (event) => {
           if (event.key.toLowerCase() === "o") {
             event.preventDefault();
             reveal(node);
           }
-          // Space marks the row, as it presses any button. Enter revives, here as
+          if (event.key === " " && node.dataset.held !== "true") {
+            event.preventDefault();
+            toggle(node.dataset.id);
+          }
+          // Space marks the row. Enter revives, here as
           // anywhere: after a click the row has focus, and Enter toggling it back
           // was a surprise.
-          if (event.key === "Enter") {
+          if (event.key === "Enter" && node.dataset.held !== "true") {
             event.preventDefault();
             if (!el.raise.disabled) el.raise.click();
           }
@@ -1053,25 +1079,27 @@ html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animatio
     const flag = s.live
       ? `<span class="flag">HELD, ${escape((s.liveReason || "").toUpperCase())}</span>`
       : "";
-    const said = s.live
-      ? ""
-      : `<span class="said">${escape(s.summary || s.lastPrompt || s.firstPrompt || "")}</span>`;
-    return `<button class="row enter" type="button" data-id="${escape(s.sessionId)}"
+    const name = s.title || s.firstPrompt || s.summary || s.label;
+    const said = `<span class="said">${escape(s.summary || s.lastPrompt || s.firstPrompt || "")}</span>`;
+    return `<div class="row enter" role="button" tabindex="0" data-id="${escape(s.sessionId)}"
         data-on="${on}" data-held="${Boolean(s.live)}"
-        aria-pressed="${on}" ${s.live ? "disabled" : ""}
+        aria-pressed="${on}" aria-disabled="${Boolean(s.live)}"
         title="Click or press Space to mark. Double click, or press O, to open the folder."
         style="animation-delay:${Math.min(index * 26, 320)}ms">
       <span class="age">${escape(s.ageLabel || "")}</span>
       <span class="mark"><i></i></span>
       <span class="body">
         <span class="name-line">
-          <span class="name">${escape(s.label)}</span>${who}${flag}
+          <span class="name" title="${escape(name)}">${escape(name)}</span>${who}${flag}
         </span>
-        <span class="path" title="${escape(s.cwd || "directory unknown")}">${escape(s.cwd || "directory unknown")}</span>
+        <span class="path-line">
+          <span class="path" title="${escape(s.cwd || "directory unknown")}">${escape(s.cwd || "directory unknown")}</span>
+          ${s.cwd ? '<button class="copy-path" type="button" title="Copy folder path" aria-label="Copy folder path" aria-disabled="false">copy path</button>' : ""}
+        </span>
         ${said}
       </span>
       <span class="turns">${turns}</span>
-    </button>`;
+    </div>`;
   }
 
   function toggle(id) {
@@ -1110,6 +1138,25 @@ html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animatio
     paint();
   });
 
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const scratch = document.createElement("textarea");
+      scratch.value = text;
+      scratch.style.cssText = "position:fixed;left:-9999px;top:0";
+      const focused = document.activeElement;
+      document.body.appendChild(scratch);
+      scratch.select();
+      try {
+        if (!document.execCommand("copy")) throw new Error("Clipboard unavailable");
+      } finally {
+        scratch.remove();
+        focused?.focus({ preventScroll: true });
+      }
+    }
+  }
+
   $("copy").addEventListener("click", async () => {
     if (!chosen.size) return word("Mark a session first.");
     const data = await api("/api/commands", {
@@ -1117,16 +1164,8 @@ html[data-frame] *,html[data-frame] *::before,html[data-frame] *::after{animatio
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids: [...chosen], days: stop().days, agent }),
     });
-    try {
-      await navigator.clipboard.writeText(data.text);
-    } catch {
-      const scratch = document.createElement("textarea");
-      scratch.value = data.text;
-      document.body.appendChild(scratch);
-      scratch.select();
-      document.execCommand("copy");
-      scratch.remove();
-    }
+    try { await copyText(data.text); }
+    catch { return word("Could not copy commands.", true); }
     word(`${data.count} command pair${data.count === 1 ? "" : "s"} on the clipboard.` +
       (data.dropped ? ` The other ${data.dropped} did not fit in one request.` : ""));
   });

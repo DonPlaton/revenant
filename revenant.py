@@ -37,7 +37,7 @@ import revenant_terminals as terminals
 from revenant_agents import AGENTS, Agent, get_agent, installed_agents, is_meaningful
 from revenant_agents import DEFAULT_AGENT as CLAUDE_CODE
 
-__version__ = "1.7.0"
+__version__ = "1.7.1"
 APP_NAME = "Revenant"
 
 _DURATION_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([smhdw])$", re.IGNORECASE)
@@ -126,7 +126,8 @@ class Session:
         return self.agent.resume_command(self.session_id)
 
     def job(self) -> terminals.Job:
-        return terminals.Job(self.label, str(self.cwd), self.resume_command)
+        argv = self.agent.windows_argv(self.session_id) if terminals.WINDOWS else ()
+        return terminals.Job(self.title or self.label, str(self.cwd), self.resume_command, argv)
 
 
 # --------------------------------------------------------------------------- #

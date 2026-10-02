@@ -243,6 +243,15 @@ def test_codex_reads_database_paths_metadata_and_renamed_titles(tmp_path: Path) 
     assert found[0].last_prompt == "fix this"
 
 
+@pytest.mark.parametrize("renamed, expected", [("", "Indexed name"), ("User name", "User name")])
+def test_codex_prefers_named_index_to_generated_database_title(tmp_path: Path, renamed: str, expected: str) -> None:
+    transcript = _rollout(tmp_path, SESSION_A, "/work/project", ["fix it"], age_hours=3)
+    _codex_db(tmp_path, transcript, name=renamed)
+    (tmp_path / "session_index.jsonl").write_text(
+        json.dumps({"id": SESSION_A, "thread_name": "Indexed name"}) + "\n", encoding="utf-8")
+    assert _scan(tmp_path, "codex")[0].title == expected
+
+
 def test_codex_deduplicates_database_and_rollout_and_uses_first_message_fallback(tmp_path: Path) -> None:
     path = _rollout(tmp_path, SESSION_A, "/work/project", [], age_hours=3)
     _codex_db(tmp_path, path)

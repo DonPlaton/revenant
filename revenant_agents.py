@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field as dataclass_field
@@ -340,6 +341,10 @@ class Agent:
     def resume_command(self, session_id: str) -> str:
         return self.resume_template.format(id=session_id)
 
+    def windows_argv(self, session_id: str) -> tuple[str, ...]:
+        """Optional native launch, for TUIs that need the terminal's own handles."""
+        return ()
+
     def installed(self) -> bool:
         return self.config_dir().is_dir()
 
@@ -612,6 +617,7 @@ class Codex(Agent):
 
     def sources(self, root: Path, *, since: datetime, until: datetime | None = None) -> Iterator[SessionSource]:
         threads = {row["id"]: row for row in self._threads(root) if row.get("id")}
+        names = self.titles(root)
         indexed_paths = {Path(row["rollout_path"]) if Path(row["rollout_path"]).is_absolute()
                          else root / row["rollout_path"]: row
                          for row in threads.values() if isinstance(row.get("rollout_path"), str)}
@@ -640,7 +646,8 @@ class Codex(Agent):
             # Preserve evidence of a real conversation even when a long tool run
             # pushes its prompt outside the bounded transcript search.
             yield SessionSource(session_id, path, self.group(path), modified, info.st_size,
-                                metadata, title=clean_prompt(row.get("name") or row.get("title"), limit=80),
+                                metadata, title=clean_prompt(row.get("name") or names.get(session_id)
+                                                            or row.get("title"), limit=200),
                                 fallback_prompt=fallback)
 
     def session_id(self, transcript: Path) -> str:
@@ -779,6 +786,27 @@ class OpenCode(Agent):
     live_window = 120.0
     process_images = frozenset({"opencode", "opencode.exe", "bun", "bun.exe", "node", "node.exe"})
     liveness_note = "OpenCode keeps no live registry; sessions active in the last 2 minutes are held back"
+
+    def windows_argv(self, session_id: str) -> tuple[str, ...]:
+        """Bypass npm's PowerShell shim and give OpenTUI a native console.
+
+        npm puts the executable beside its package, not on PATH. Prefer that
+        binary; installations with only a cmd shim can use cmd directly.
+        """
+        if not re.fullmatch(r"ses_[A-Za-z0-9]+", session_id):
+            raise ValueError("Invalid OpenCode session ID")
+        binary = shutil.which("opencode.exe")
+        if binary:
+            return (binary, "--session", session_id)
+        shim = shutil.which("opencode.cmd")
+        if shim:
+            native = Path(shim).parent / "node_modules" / "opencode-ai" / "bin" / "opencode.exe"
+            if native.is_file():
+                return (str(native), "--session", session_id)
+            # The shim path comes from PATH, never from the session database.
+            if not any(c in shim for c in '"%\r\n'):
+                return ("cmd.exe", "/d", "/k", f'""{shim}" --session {session_id}"')
+        return ()
 
     def config_dir(self, explicit: str | os.PathLike[str] | None = None) -> Path:
         if explicit:
